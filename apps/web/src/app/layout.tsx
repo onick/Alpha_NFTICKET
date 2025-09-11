@@ -14,7 +14,7 @@ export default function RootLayout({
       <body className={inter.className}>
         <div className="min-h-screen">
           <SimpleHeader />
-          <main className="pt-[var(--header-h)]">
+          <main>
             {children}
           </main>
         </div>
