@@ -1,53 +1,22 @@
 import { SimpleSidebar } from '../components/SimpleSidebar'
 import { SocialFeed } from '../components/SocialFeed'
-import { Sparkles, Menu } from 'lucide-react'
+import { ModularLayout } from '../components/ModularLayout'
+import { TrendingEvents } from '../modules/TrendingEvents'
+import { SuggestedFriends } from '../modules/SuggestedFriends'
 
 export default function HomePage() {
+  // Configure which modules to show on the right sidebar
+  const rightModules = [
+    <TrendingEvents key="trending" />,
+    <SuggestedFriends key="friends" />
+  ]
+
   return (
-    <div className="min-h-screen bg-[#2b2d31]">
-      <div className="flex justify-center">
-        <div className="flex max-w-7xl w-full relative">
-          {/* Left Sidebar - Fixed position but centered within layout */}
-          <aside className="hidden lg:block w-64 shrink-0">
-            <div className="fixed top-[var(--header-h)] w-64 h-[calc(100vh-var(--header-h))] bg-[#2b2d31] overflow-y-auto z-40">
-              <div className="p-4">
-                <SimpleSidebar />
-              </div>
-            </div>
-          </aside>
-
-          {/* Main Content */}
-          <div className="flex-1 lg:border-l border-[#404249]">
-            {/* Header */}
-            <div className="px-4 lg:px-6 py-4">
-              <div className="max-w-4xl mx-auto">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    {/* Mobile menu button */}
-                    <button className="lg:hidden w-8 h-8 rounded-lg bg-gray-700/50 hover:bg-gray-600/50 flex items-center justify-center transition-colors duration-200">
-                      <Menu size={18} className="text-gray-300" />
-                    </button>
-                    <Sparkles className="text-purple-400" size={24} />
-                    <div>
-                      <h1 className="text-xl font-bold text-white">Home</h1>
-                      <p className="text-sm text-gray-400 hidden sm:block">Descubre los eventos más populares</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Social Feed */}
-            <div className="p-4 lg:p-6">
-              <div className="max-w-4xl mx-auto">
-                <div className="max-w-2xl">
-                  <SocialFeed />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+    <ModularLayout
+      leftSidebar={<SimpleSidebar />}
+      mainContent={<SocialFeed />}
+      rightModules={rightModules}
+      showRightSidebar={true}
+    />
   )
 }

@@ -53,7 +53,7 @@
   .discord-card {
     background-color: #2b2d31;
     border: 1px solid #404249;
-    @apply rounded-lg p-4 hover:bg-[#32353b] transition-colors duration-200;
+    @apply rounded-lg p-4;
   }
   
   .discord-purchase-card {
