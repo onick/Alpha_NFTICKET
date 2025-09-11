@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["ES2020", "DOM", "DOM.Iterable"],
+    "allowJs": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "noEmit": false,
+    "esModuleInterop": true,
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "preserve",
+    "incremental": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "composite": true,
+    "baseUrl": ".",
+    "paths": {
+      "@nfticket/*": ["./packages/*/src"],
+      "@nfticket/blockchain": ["./packages/blockchain/src"],
+      "@nfticket/api": ["./packages/api/src"],
+      "@nfticket/ui": ["./packages/ui/src"],
+      "@nfticket/i18n": ["./packages/i18n/src"],
+      "@nfticket/cache": ["./packages/cache/src"]
+    }
+  },
+  "exclude": ["node_modules", "dist", "coverage"]
+}

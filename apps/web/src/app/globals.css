@@ -1,0 +1,77 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --header-h: 72px;
+  
+  /* NFTicket Alfa Color Tokens */
+  --brand-primary: #4C5BFF;
+  --brand-secondary: #6B2AE6;
+  --brand-gradient: linear-gradient(135deg, #4C5BFF 0%, #6B2AE6 100%);
+  
+  /* Background tokens */
+  --bg-primary: #0B0B12;
+  --bg-muted: #0F0F18;
+  --surface-glass: rgba(255,255,255,0.06);
+  --surface-border: rgba(255,255,255,0.12);
+  
+  /* Text tokens */
+  --text-primary: #f5f6f9;
+  --text-muted: #bfc3cf;
+  
+  /* Shadows */
+  --shadow-light: 0 10px 30px rgba(14,18,28,.08);
+  --shadow-dark: 0 10px 30px rgba(0,0,0,.35);
+}
+
+@layer base {
+  html {
+    @apply scroll-smooth;
+  }
+  
+  body {
+    @apply min-h-screen;
+    color: #f5f6f9;
+    background: linear-gradient(135deg, #0B0B12 0%, #0F0F18 50%, #1A215F 100%);
+  }
+}
+
+@layer components {
+  .container {
+    @apply max-w-page mx-auto px-6;
+  }
+  
+  .sidebar-sticky {
+    @apply sticky top-[var(--header-h)];
+  }
+  
+  .card-right-rail {
+    @apply rounded-lg bg-[#2b2d31] border border-[#404249] p-4 hover:bg-[#32353b] transition-colors duration-200;
+  }
+  
+  .discord-card {
+    background-color: #2b2d31;
+    border: 1px solid #404249;
+    @apply rounded-lg p-4 hover:bg-[#32353b] transition-colors duration-200;
+  }
+  
+  .discord-purchase-card {
+    background-color: #2d3f36;
+    border: 1px solid #3d5a47;
+    @apply rounded-lg p-4 hover:bg-[#334c3a] transition-colors duration-200;
+  }
+  
+  .discord-sidebar {
+    background-color: #1e1f26;
+    border-right: 1px solid #404249;
+  }
+  
+  .discord-nav-item {
+    @apply flex items-center space-x-3 px-3 py-2 rounded-lg text-gray-300 hover:bg-[#404249] hover:text-white transition-colors duration-200;
+  }
+  
+  .hero-gradient {
+    background: linear-gradient(135deg, #0B0B12 0%, #0F0F18 50%, #1A215F 100%);
+  }
+}

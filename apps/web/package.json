@@ -1,0 +1,36 @@
+{
+  "name": "@nfticket/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev",
+    "lint": "next lint",
+    "start": "next start",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nfticket/api": "workspace:*",
+    "@nfticket/blockchain": "workspace:*",
+    "@nfticket/cache": "workspace:*",
+    "@nfticket/i18n": "workspace:*",
+    "@nfticket/ui": "workspace:*",
+    "@supabase/auth-helpers-nextjs": "^0.8.7",
+    "@supabase/supabase-js": "^2.38.0",
+    "embla-carousel-react": "^8.6.0",
+    "lucide-react": "^0.543.0",
+    "next": "14.0.3",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.8.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.5",
+    "typescript": "^5.2.2"
+  }
+}

@@ -1,0 +1,39 @@
+export default {
+  "home": {
+    "title": "Welcome to NFTicket",
+    "subtitle": "The ultimate platform for NFT events",
+    "cta": "Explore events"
+  },
+  "auth": {
+    "login": "Sign in",
+    "register": "Sign up",
+    "logout": "Sign out",
+    "email": "Email",
+    "password": "Password",
+    "forgotPassword": "Forgot password?"
+  },
+  "events": {
+    "title": "Events",
+    "search": "Search events...",
+    "categories": "Categories",
+    "date": "Date",
+    "location": "Location",
+    "price": "Price",
+    "buyTicket": "Buy ticket",
+    "soldOut": "Sold out"
+  },
+  "feed": {
+    "recent": "Recent",
+    "popular": "Popular",
+    "following": "Following",
+    "noResults": "No content available"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "Error",
+    "retry": "Retry",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "save": "Save"
+  }
+} as const;
