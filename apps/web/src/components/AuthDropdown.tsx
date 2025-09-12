@@ -20,6 +20,23 @@ import {
 } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 
+// Profile loading utilities (shared with TwitterLikeLayout)
+function loadProfileFromStorage(userId: string) {
+  if (typeof window !== 'undefined') {
+    const profileKey = `nfticket_profile_${userId}`
+    const savedProfile = localStorage.getItem(profileKey)
+    if (savedProfile) {
+      try {
+        return JSON.parse(savedProfile)
+      } catch (error) {
+        console.error('Error parsing saved profile:', error)
+        return null
+      }
+    }
+  }
+  return null
+}
+
 interface AuthDropdownProps {
   className?: string
 }
@@ -38,7 +55,61 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
   const [showPassword, setShowPassword] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [userProfile, setUserProfile] = useState<any>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+
+  // Load and listen for profile updates
+  useEffect(() => {
+    if (user) {
+      // Load saved profile data
+      const savedProfile = loadProfileFromStorage(user.id)
+      
+      const currentProfile = savedProfile ? {
+        // Start with auth data
+        id: user.id,
+        email: user.email,
+        // Override with saved data
+        ...savedProfile,
+        // Fallback to auth data if saved data doesn't exist
+        name: savedProfile.name || user.name,
+        avatar: savedProfile.avatar || user.avatar_url
+      } : user
+      
+      setUserProfile(currentProfile)
+      console.log('🔄 AuthDropdown profile updated:', currentProfile)
+    }
+  }, [user])
+
+  // Listen for profile changes in localStorage
+  useEffect(() => {
+    const handleStorageChange = (e: StorageEvent) => {
+      if (user && e.key === `nfticket_profile_${user.id}`) {
+        console.log('🔄 Profile updated in localStorage, refreshing AuthDropdown')
+        const savedProfile = loadProfileFromStorage(user.id)
+        if (savedProfile) {
+          const updatedProfile = {
+            id: user.id,
+            email: user.email,
+            ...savedProfile,
+            name: savedProfile.name || user.name,
+            avatar: savedProfile.avatar || user.avatar_url
+          }
+          setUserProfile(updatedProfile)
+        }
+      }
+    }
+
+    // Listen for storage events from other windows/tabs
+    window.addEventListener('storage', handleStorageChange)
+    
+    // Custom event for same-window updates
+    window.addEventListener('profileUpdated', handleStorageChange as any)
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange)
+      window.removeEventListener('profileUpdated', handleStorageChange as any)
+    }
+  }, [user])
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -111,23 +182,23 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
   }
 
   // If user is logged in, show user menu
-  if (user) {
+  if (user && userProfile) {
     return (
       <div className={`relative ${className}`} ref={dropdownRef}>
         <button 
           onClick={() => setIsOpen(!isOpen)}
           className="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center hover:scale-105 transition-transform duration-200 border-2 border-transparent hover:border-white/20"
-          title={user.name}
+          title={userProfile.name}
         >
-          {user.avatar_url ? (
+          {userProfile.avatar ? (
             <img 
-              src={user.avatar_url} 
-              alt={user.name}
+              src={userProfile.avatar} 
+              alt={userProfile.name}
               className="w-full h-full rounded-full object-cover"
             />
           ) : (
             <span className="text-white text-sm font-bold">
-              {user.name.charAt(0).toUpperCase()}
+              {userProfile.name.charAt(0).toUpperCase()}
             </span>
           )}
         </button>
@@ -137,22 +208,22 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
             {/* User info header */}
             <div className="px-4 py-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-b border-[#404249]">
               <div className="flex items-center space-x-3">
-                {user.avatar_url ? (
+                {userProfile.avatar ? (
                   <img 
-                    src={user.avatar_url} 
-                    alt={user.name}
+                    src={userProfile.avatar} 
+                    alt={userProfile.name}
                     className="w-12 h-12 rounded-full object-cover"
                   />
                 ) : (
                   <div className="w-12 h-12 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
                     <span className="text-white font-bold text-lg">
-                      {user.name.charAt(0).toUpperCase()}
+                      {userProfile.name.charAt(0).toUpperCase()}
                     </span>
                   </div>
                 )}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate">{user.name}</p>
-                  <p className="text-sm text-gray-400 truncate">{user.email}</p>
+                  <p className="font-semibold text-white truncate">{userProfile.name}</p>
+                  <p className="text-sm text-gray-400 truncate">{userProfile.email}</p>
                 </div>
               </div>
             </div>
@@ -161,7 +232,12 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
             <div className="py-2">
               <button
                 onClick={() => {
-                  window.location.href = '/perfil'
+                  // We'll handle this with a callback prop later
+                  if (window.openProfileModal) {
+                    window.openProfileModal()
+                  } else {
+                    window.location.href = '/perfil'
+                  }
                   setIsOpen(false)
                 }}
                 className="w-full flex items-center space-x-3 px-4 py-2 text-gray-300 hover:bg-gray-700/50 hover:text-white transition-colors"

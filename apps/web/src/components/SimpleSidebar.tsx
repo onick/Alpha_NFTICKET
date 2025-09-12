@@ -1,8 +1,11 @@
 'use client'
 
-import { Home, TrendingUp, Hash, Plus, Users } from 'lucide-react'
+import { Home, TrendingUp, Hash, Plus, Users, User } from 'lucide-react'
+import { useAuth } from '@/lib/auth'
 
 export function SimpleSidebar() {
+  const { user } = useAuth()
+  
   const principalItems = [
     { label: 'Home', href: '/', icon: Home, active: true },
     { label: 'Popular', href: '/popular', icon: TrendingUp, active: false },
@@ -37,6 +40,26 @@ export function SimpleSidebar() {
           ))}
         </div>
       </div>
+
+      {/* User Profile Section - Show only if logged in */}
+      {user && (
+        <div className="space-y-4">
+          <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">MI CUENTA</h3>
+          <div className="space-y-1">
+            <button
+              onClick={() => {
+                if ((window as any).openProfileModal) {
+                  (window as any).openProfileModal()
+                }
+              }}
+              className="w-full flex items-center space-x-3 px-2 py-2 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all duration-200"
+            >
+              <User size={20} />
+              <span className="font-medium">Mi Perfil</span>
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Communities Section */}
       <div className="space-y-4">
