@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { FeedRanker, UserSignals, FeedItem } from '@nfticket/api'
+import { getEcosystemManager } from '@/lib/ecosystem-integration'
 
 export function SimpleFeed() {
   const [feedItems, setFeedItems] = useState<FeedItem[]>([])
@@ -9,51 +10,108 @@ export function SimpleFeed() {
 
   useEffect(() => {
     const loadFeed = async () => {
-      const mockUserSignals: UserSignals = {
-        likesOnPurchases: 15,
-        likesOnSocial: 8,
-        dwellOnPurchases: 120,
-        categoriesFav: ['music', 'sports', 'tech'],
-      }
+      if (typeof window === 'undefined') return
 
-      const mockItems: FeedItem[] = [
-        {
-          id: '1',
-          type: 'purchase',
-          score: 0,
-          userId: 'user1',
-          eventId: 'event1',
-          categories: ['music'],
-          timestamp: new Date(),
-          metadata: { eventName: 'Concierto de Rock', price: 50 }
-        },
-        {
-          id: '2',
-          type: 'social',
-          score: 0,
-          userId: 'user2',
-          categories: ['tech'],
-          timestamp: new Date(Date.now() - 1000 * 60 * 30),
-          metadata: { content: '¡Gran conferencia tech próximamente!' }
-        },
-        {
-          id: '3',
-          type: 'purchase',
-          score: 0,
-          userId: 'user3',
-          eventId: 'event2',
-          categories: ['sports'],
-          timestamp: new Date(Date.now() - 1000 * 60 * 60),
-          metadata: { eventName: 'Partido de Fútbol', price: 25 }
+      try {
+        const manager = getEcosystemManager()
+        if (!manager) {
+          setLoading(false)
+          return
         }
-      ]
 
-      const ranker = new FeedRanker()
-      const weights = ranker.calculateWeights(mockUserSignals)
-      const rankedItems = ranker.rankFeedItems(mockItems, mockUserSignals, weights)
+        // Obtener datos reales del ecosistema
+        const events = manager.getPublishedEvents()
+        const allPurchases = events.flatMap(event => manager.getPurchasesByEvent(event.id))
+        
+        const mockUserSignals: UserSignals = {
+          likesOnPurchases: 15,
+          likesOnSocial: 8,
+          dwellOnPurchases: 120,
+          categoriesFav: ['music', 'sports', 'tech'],
+        }
 
-      setFeedItems(rankedItems)
-      setLoading(false)
+        // Crear items de feed basados en datos reales
+        const feedItems: FeedItem[] = []
+        
+        // Agregar eventos recientes como posts sociales
+        events.slice(0, 3).forEach((event, index) => {
+          feedItems.push({
+            id: `event_${event.id}`,
+            type: 'social',
+            score: 0,
+            userId: event.organizerId,
+            eventId: event.id,
+            categories: [event.category.toLowerCase()],
+            timestamp: new Date(event.createdAt),
+            metadata: { 
+              content: `🎉 Nuevo evento disponible: ${event.name}`,
+              eventName: event.name,
+              organizerName: `Organizador ${event.organizerId.slice(-4)}`
+            }
+          })
+        })
+
+        // Agregar compras recientes
+        allPurchases.slice(0, 5).forEach((purchase, index) => {
+          const event = events.find(e => e.id === purchase.eventId)
+          if (event) {
+            feedItems.push({
+              id: `purchase_${purchase.id}`,
+              type: 'purchase',
+              score: 0,
+              userId: purchase.userId,
+              eventId: purchase.eventId,
+              categories: [event.category.toLowerCase()],
+              timestamp: new Date(purchase.createdAt),
+              metadata: { 
+                eventName: event.name,
+                price: purchase.total,
+                userName: `${purchase.userInfo.firstName} ${purchase.userInfo.lastName}`
+              }
+            })
+          }
+        })
+
+        // Si no hay datos reales, mostrar algunos ejemplos
+        if (feedItems.length === 0) {
+          feedItems.push(
+            {
+              id: 'welcome',
+              type: 'social',
+              score: 0.9,
+              userId: 'system',
+              categories: ['general'],
+              timestamp: new Date(),
+              metadata: { 
+                content: '👋 ¡Bienvenido a NFTicket! Aquí verás la actividad de eventos y compras.',
+                organizerName: 'NFTicket'
+              }
+            },
+            {
+              id: 'tip',
+              type: 'social',
+              score: 0.8,
+              userId: 'system',
+              categories: ['general'],
+              timestamp: new Date(Date.now() - 1000 * 60 * 30),
+              metadata: { 
+                content: '💡 Tip: Visita /test-ecosystem para generar datos de prueba y ver el feed en acción.',
+                organizerName: 'NFTicket'
+              }
+            }
+          )
+        }
+
+        const ranker = new FeedRanker()
+        const weights = ranker.calculateWeights(mockUserSignals)
+        const rankedItems = ranker.rankFeedItems(feedItems, mockUserSignals, weights)
+
+        setFeedItems(rankedItems)
+        setLoading(false)
+      } catch (error) {
+        console.error('Error loading feed:', error)
+        setLoading(false)
+      }
     }
 
     loadFeed()
@@ -109,16 +167,21 @@ export function SimpleFeed() {
                   </div>
                   <h3 className="font-medium text-white mb-1">
                     {item.type === 'purchase' 
-                      ? item.metadata.eventName 
-                      : 'Post Social'
+                      ? `${item.metadata.userName} compró tickets`
+                      : item.metadata.organizerName || 'Post Social'
                     }
                   </h3>
-                  <p className="text-text-muted text-sm">
+                  <p className="text-text-muted text-sm mb-2">
                     {item.type === 'purchase' 
-                      ? `Precio: $${item.metadata.price}` 
+                      ? `📍 ${item.metadata.eventName} • RD$${item.metadata.price?.toLocaleString()}`
                       : item.metadata.content
                     }
                   </p>
+                  {item.type === 'purchase' && (
+                    <div className="flex items-center space-x-2 text-xs text-brand-400">
+                      <span>🎫 Tickets NFT adquiridos</span>
+                    </div>
+                  )}
                   <div className="flex items-center space-x-2 mt-3">
                     {item.categories.map((cat) => (
                       <span key={cat} className="text-xs bg-surface-glass text-text-muted px-2 py-1 rounded-lg">

@@ -67,7 +67,7 @@ export function SuggestedFriends() {
       </div>
 
       <div className="space-y-4">
-        {suggestedUsers.map((user, index) => (
+        {suggestedUsers.slice(0, 3).map((user, index) => (
           <div 
             key={user.id} 
             className="group bg-[#1e1f26] hover:bg-[#2a2d38] rounded-lg p-4 transition-all duration-300 hover:scale-[1.02] hover:shadow-md animate-in slide-in-from-right-4 fade-in"
@@ -100,17 +100,7 @@ export function SuggestedFriends() {
                     </h3>
                   </div>
                   
-                  <p className="text-xs text-gray-400 mb-1">{user.username}</p>
-                  
-                  <div className="flex items-center space-x-3 mb-2">
-                    <div className="flex items-center space-x-1">
-                      <Users size={12} className="text-gray-400" />
-                      <span className="text-xs text-gray-400">{user.followers} seguidores</span>
-                    </div>
-                    <div className="text-xs text-gray-400">
-                      {user.mutualFriends} amigos en común
-                    </div>
-                  </div>
+                  <p className="text-xs text-gray-400 mb-2">{user.username}</p>
 
                   {/* Interests tags */}
                   <div className="flex items-center space-x-1 mb-2">

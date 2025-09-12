@@ -18,7 +18,7 @@ export function ModularLayout({
   return (
     <div className="min-h-screen bg-[#2b2d31]">
       <div className="flex justify-center">
-        <div className="flex w-full relative">
+        <div className="flex w-full relative min-h-screen">
           {/* Left Sidebar */}
           {leftSidebar && (
             <aside className="hidden lg:block w-64 shrink-0">
@@ -31,7 +31,7 @@ export function ModularLayout({
           )}
 
           {/* Main Content Area */}
-          <div className="flex-1 lg:border-l border-[#404249]">
+          <div className="flex-1 lg:border-l border-[#404249] min-h-screen">
             {/* Header */}
             <div className="px-4 lg:px-6 py-4">
               <div className="flex items-center justify-between">

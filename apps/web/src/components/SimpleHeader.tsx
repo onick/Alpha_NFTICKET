@@ -1,6 +1,7 @@
 'use client'
 
 import { Calendar, TrendingUp, Users, Plus, Bell, Settings, User } from 'lucide-react'
+import { AuthDropdown } from './AuthDropdown'
 
 export function SimpleHeader() {
   return (
@@ -67,10 +68,8 @@ export function SimpleHeader() {
                   <Settings size={16} className="text-gray-300" />
                 </button>
                 
-                {/* User Avatar */}
-                <button className="w-8 h-8 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold">U</span>
-                </button>
+                {/* Authentication Dropdown */}
+                <AuthDropdown />
               </div>
             </div>
           </div>

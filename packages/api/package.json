@@ -1,24 +1,27 @@
 {
   "name": "@nfticket/api",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
+  "description": "NFTicket API services and business logic",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc",
-    "dev": "tsc --watch",
-    "test": "jest",
-    "typecheck": "tsc --noEmit"
+    "dev": "tsc --watch"
   },
   "dependencies": {
-    "@nfticket/blockchain": "workspace:*",
-    "@supabase/supabase-js": "^2.38.0"
+    "@nfticket/database": "workspace:*",
+    "@nfticket/feed": "workspace:*",
+    "nanoid": "^5.0.0"
   },
   "devDependencies": {
-    "@types/jest": "^29.5.5",
-    "@types/node": "^20.8.0",
-    "jest": "^29.7.0",
-    "ts-jest": "^29.1.1",
-    "typescript": "^5.2.2"
+    "@types/node": "^20.0.0",
+    "typescript": "^5.0.0"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "require": "./dist/index.js"
+    }
   }
 }

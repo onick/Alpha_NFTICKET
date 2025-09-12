@@ -1,20 +1,18 @@
 import { SimpleSidebar } from '../components/SimpleSidebar'
-import { SocialFeed } from '../components/SocialFeed'
+import { SimpleFeed } from '../components/SimpleFeed'
 import { ModularLayout } from '../components/ModularLayout'
 import { TrendingEvents } from '../modules/TrendingEvents'
-import { SuggestedFriends } from '../modules/SuggestedFriends'
 
 export default function HomePage() {
   // Configure which modules to show on the right sidebar
   const rightModules = [
-    <TrendingEvents key="trending" />,
-    <SuggestedFriends key="friends" />
+    <TrendingEvents key="trending" />
   ]
 
   return (
     <ModularLayout
       leftSidebar={<SimpleSidebar />}
-      mainContent={<SocialFeed />}
+      mainContent={<SimpleFeed />}
       rightModules={rightModules}
       showRightSidebar={true}
     />
