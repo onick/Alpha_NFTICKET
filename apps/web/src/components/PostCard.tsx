@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Heart, MessageCircle, Share, Bookmark, MoreHorizontal } from 'lucide-react'
 import { FeedPostWithAuthor } from '@nfticket/feed'
+import { CommentsModal } from './CommentsModal'
 
 interface PostCardProps {
   post: FeedPostWithAuthor
@@ -20,6 +21,9 @@ export function PostCard({ post, onLike, onComment, onShare, onSave }: PostCardP
   const [isLiked, setIsLiked] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
   const [likesCount, setLikesCount] = useState(post.likes_count)
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false)
+  
+  console.log('PostCard render - isCommentsOpen:', isCommentsOpen)
 
   const handleLike = async () => {
     const newLiked = !isLiked
@@ -67,6 +71,7 @@ export function PostCard({ post, onLike, onComment, onShare, onSave }: PostCardP
   }
 
   return (
+    <>
     <Card className="w-full">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -97,6 +102,45 @@ export function PostCard({ post, onLike, onComment, onShare, onSave }: PostCardP
         {post.text && (
           <div className="mb-4">
             <p className="text-sm leading-relaxed">{post.text}</p>
+          </div>
+        )}
+
+        {/* Images */}
+        {post.media && post.media.length > 0 && (
+          <div className="mb-4">
+            <div className={`grid gap-2 rounded-lg overflow-hidden ${
+              post.media.length === 1 ? 'grid-cols-1' : 
+              post.media.length === 2 ? 'grid-cols-2' :
+              post.media.length === 3 ? 'grid-cols-2' :
+              'grid-cols-2'
+            }`}>
+              {post.media.slice(0, 4).map((media, index) => (
+                <div 
+                  key={media.id || index} 
+                  className={`relative ${
+                    post.media.length === 3 && index === 0 ? 'row-span-2' : 
+                    post.media.length === 4 && index < 2 ? '' : ''
+                  }`}
+                >
+                  <img 
+                    src={media.url} 
+                    alt={`Post image ${index + 1}`}
+                    className="w-full h-48 object-cover cursor-pointer hover:opacity-90 transition-opacity"
+                    onClick={() => {
+                      // TODO: Implement image modal/lightbox
+                      window.open(media.url, '_blank')
+                    }}
+                  />
+                  {index === 3 && post.media.length > 4 && (
+                    <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
+                      <span className="text-white font-semibold text-lg">
+                        +{post.media.length - 4}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -131,7 +175,10 @@ export function PostCard({ post, onLike, onComment, onShare, onSave }: PostCardP
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onComment?.(post.id)}
+              onClick={() => {
+                console.log('Comments button clicked for post:', post.id)
+                setIsCommentsOpen(true)
+              }}
               className="flex items-center space-x-1 text-gray-600"
             >
               <MessageCircle className="h-4 w-4" />
@@ -160,5 +207,16 @@ export function PostCard({ post, onLike, onComment, onShare, onSave }: PostCardP
         </div>
       </CardContent>
     </Card>
+
+    {/* Comments Modal */}
+    <CommentsModal
+      post={post}
+      isOpen={isCommentsOpen}
+      onClose={() => setIsCommentsOpen(false)}
+      onLike={onLike}
+      onShare={onShare}
+      onSave={onSave}
+    />
+  </>
   )
 }

@@ -10,6 +10,8 @@ import ProductionTipTapEditor, { ProductionEditorMonitor } from './ProductionTip
 import { PostComposer as RealPostComposer } from './PostComposer'
 import { TipTapEditorRef } from './TipTapEditor'
 import { extractHashtags, extractMentions, htmlToPlainText } from '@/lib/tiptap-helpers'
+import { CommentsModal } from './CommentsModal'
+import { ShareModal } from './ShareModal'
 
 interface SocialPost {
   id: string
@@ -78,6 +80,11 @@ export function SocialFeedLayout() {
   const [selectedMedia, setSelectedMedia] = useState<File[]>([])
   const [communities, setCommunities] = useState<Community[]>([])
   const [activeTab, setActiveTab] = useState<'following' | 'discover' | 'communities'>('following')
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false)
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null)
+  const [postComments, setPostComments] = useState<Record<string, any[]>>({})
+  const [commentLikes, setCommentLikes] = useState<Record<string, { liked: boolean, count: number }>>({})
 
   // Handler para crear nuevos posts desde PostComposer
   const handlePost = async (postData: any) => {
@@ -94,7 +101,12 @@ export function SocialFeedLayout() {
         following: false
       },
       content: postData.text || '',
-      media: [], // TODO: Agregar soporte para media
+      media: postData.images ? postData.images.map((image: string, index: number) => ({
+        id: `${Date.now()}-${index}`,
+        type: 'image' as const,
+        url: image,
+        thumbnail: image
+      })) : [],
       location: postData.location || '',
       event: postData.type === 'purchase' ? {
         name: postData.event_name,
@@ -110,8 +122,8 @@ export function SocialFeedLayout() {
         saves: 0
       },
       isLiked: false,
-      timestamp: new Date().toISOString(),
-      visibility: postData.visibility || 'public'
+      isSaved: false,
+      timestamp: new Date().toISOString()
     }
     
     // Agregar el post al inicio de la lista
@@ -311,6 +323,136 @@ export function SocialFeedLayout() {
           : post
       )
     )
+  }
+
+  const handleShare = (postId: string) => {
+    const post = posts.find(p => p.id === postId)
+    if (!post) return
+    
+    setSelectedPost(post)
+    setIsShareModalOpen(true)
+  }
+
+  const handleShareAction = (method: 'whatsapp' | 'copy' | 'friend', data?: any) => {
+    if (!selectedPost) return
+
+    // Increment share count
+    setPosts(prevPosts => 
+      prevPosts.map(p => 
+        p.id === selectedPost.id 
+          ? {
+              ...p,
+              metrics: {
+                ...p.metrics,
+                shares: p.metrics.shares + 1
+              }
+            }
+          : p
+      )
+    )
+
+    // Handle different share methods
+    switch (method) {
+      case 'whatsapp':
+        console.log('📱 Compartido por WhatsApp')
+        break
+      case 'copy':
+        console.log('📋 Enlace copiado al portapapeles')
+        break
+      case 'friend':
+        console.log('👥 Compartido con amigos:', data?.friends?.map((f: any) => f.name).join(', '))
+        // Here you would send the post to the selected friends via your API
+        break
+    }
+  }
+
+  const handleComment = (post: SocialPost) => {
+    setSelectedPost(post)
+    setIsCommentsOpen(true)
+  }
+
+  const handleNewComment = (postId: string) => {
+    // Update comment count in the original post
+    setPosts(prevPosts => 
+      prevPosts.map(post => 
+        post.id === postId 
+          ? {
+              ...post,
+              metrics: {
+                ...post.metrics,
+                comments: post.metrics.comments + 1
+              }
+            }
+          : post
+      )
+    )
+  }
+
+  const handleAddComment = (postId: string, comment: any) => {
+    // Add comment to the persistent storage
+    setPostComments(prev => ({
+      ...prev,
+      [postId]: [...(prev[postId] || []), comment]
+    }))
+    handleNewComment(postId)
+  }
+
+  const getCommentsForPost = (postId: string) => {
+    return postComments[postId] || []
+  }
+
+  const handleCommentLike = (commentId: string, currentLikes: number) => {
+    setCommentLikes(prev => {
+      const currentState = prev[commentId] || { liked: false, count: currentLikes }
+      const newLiked = !currentState.liked
+      return {
+        ...prev,
+        [commentId]: {
+          liked: newLiked,
+          count: newLiked ? currentState.count + 1 : currentState.count - 1
+        }
+      }
+    })
+  }
+
+  const getCommentLikeState = (commentId: string, originalCount: number) => {
+    const state = commentLikes[commentId]
+    return state || { liked: false, count: originalCount }
+  }
+
+  // Convert SocialPost to FeedPostWithAuthor for CommentsModal
+  const convertToFeedPost = (post: SocialPost) => {
+    return {
+      id: post.id,
+      author_id: post.user.id,
+      type: 'user' as const,
+      text: post.content,
+      visibility: 'public' as const,
+      created_at: new Date().toISOString(),
+      likes_count: post.metrics.likes,
+      comments_count: post.metrics.comments,
+      saves_count: post.metrics.saves,
+      shares_count: post.metrics.shares,
+      reports_count: 0,
+      is_liked: post.isLiked,
+      is_saved: post.isSaved,
+      author: {
+        id: post.user.id,
+        username: post.user.username,
+        name: post.user.name,
+        full_name: post.user.name,
+        avatar_url: post.user.avatar,
+        is_verified: post.user.verified
+      },
+      hashtags: post.hashtags,
+      media: post.media ? post.media.map((m, index) => ({
+        id: `${post.id}-${index}`,
+        post_id: post.id,
+        url: m.url,
+        type: 'image' as const
+      })) : undefined,
+      location: post.location
+    }
   }
 
   const handleFollow = (userId: string) => {
@@ -551,11 +693,17 @@ export function SocialFeedLayout() {
             <Heart size={16} className={post.isLiked ? 'fill-current' : ''} />
             <span className="text-sm">{formatNumber(post.metrics.likes)}</span>
           </button>
-          <button className="flex items-center space-x-1 text-gray-400 hover:text-blue-400 transition-colors">
+          <button 
+            onClick={() => handleComment(post)}
+            className="flex items-center space-x-1 text-gray-400 hover:text-blue-400 transition-colors"
+          >
             <MessageCircle size={16} />
             <span className="text-sm">{formatNumber(post.metrics.comments)}</span>
           </button>
-          <button className="flex items-center space-x-1 text-gray-400 hover:text-green-400 transition-colors">
+          <button 
+            onClick={() => handleShare(post.id)}
+            className="flex items-center space-x-1 text-gray-400 hover:text-green-400 transition-colors"
+          >
             <Share2 size={16} />
             <span className="text-sm">{formatNumber(post.metrics.shares)}</span>
           </button>
@@ -707,6 +855,53 @@ export function SocialFeedLayout() {
         showHeader={true}
       />
       <ProductionEditorMonitor />
+      
+      {/* Comments Modal */}
+      {selectedPost && (
+        <CommentsModal
+          post={convertToFeedPost(selectedPost)}
+          isOpen={isCommentsOpen}
+          onClose={() => {
+            setIsCommentsOpen(false)
+            setSelectedPost(null)
+          }}
+          onLike={(postId, liked) => handleLike(postId)}
+          onShare={(postId) => {
+            const post = posts.find(p => p.id === postId)
+            if (post) {
+              setSelectedPost(post)
+              setIsShareModalOpen(true)
+            }
+          }}
+          onSave={(postId, saved) => handleSave(postId)}
+          onNewComment={handleNewComment}
+          onAddComment={handleAddComment}
+          existingComments={getCommentsForPost(selectedPost.id)}
+          onCommentLike={handleCommentLike}
+          getCommentLikeState={getCommentLikeState}
+        />
+      )}
+
+      {/* Share Modal */}
+      {selectedPost && (
+        <ShareModal
+          isOpen={isShareModalOpen}
+          onClose={() => {
+            setIsShareModalOpen(false)
+            setSelectedPost(null)
+          }}
+          post={{
+            id: selectedPost.id,
+            content: selectedPost.content,
+            author: {
+              name: selectedPost.user.name,
+              username: selectedPost.user.username
+            },
+            location: selectedPost.location
+          }}
+          onShare={handleShareAction}
+        />
+      )}
     </>
   )
 }

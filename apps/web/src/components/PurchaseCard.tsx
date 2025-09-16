@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Heart, MessageCircle, Share, Bookmark, ShoppingBag, Calendar, MapPin } from 'lucide-react'
 import { FeedPostWithAuthor } from '@nfticket/feed'
+import { CommentsModal } from './CommentsModal'
 
 interface PurchaseCardProps {
   post: FeedPostWithAuthor
@@ -20,6 +21,7 @@ export function PurchaseCard({ post, onLike, onComment, onShare, onSave }: Purch
   const [isLiked, setIsLiked] = useState(false)
   const [isSaved, setIsSaved] = useState(false)
   const [likesCount, setLikesCount] = useState(post.likes_count)
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false)
 
   const handleLike = async () => {
     const newLiked = !isLiked
@@ -69,6 +71,7 @@ export function PurchaseCard({ post, onLike, onComment, onShare, onSave }: Purch
   }
 
   return (
+    <>
     <Card className="w-full border-l-4 border-l-green-500">
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between">
@@ -158,7 +161,10 @@ export function PurchaseCard({ post, onLike, onComment, onShare, onSave }: Purch
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onComment?.(post.id)}
+              onClick={() => {
+                console.log('PurchaseCard Comments button clicked for post:', post.id)
+                setIsCommentsOpen(true)
+              }}
               className="flex items-center space-x-1 text-gray-600"
             >
               <MessageCircle className="h-4 w-4" />
@@ -187,5 +193,16 @@ export function PurchaseCard({ post, onLike, onComment, onShare, onSave }: Purch
         </div>
       </CardContent>
     </Card>
+
+    {/* Comments Modal */}
+    <CommentsModal
+      post={post}
+      isOpen={isCommentsOpen}
+      onClose={() => setIsCommentsOpen(false)}
+      onLike={onLike}
+      onShare={onShare}
+      onSave={onSave}
+    />
+  </>
   )
 }
