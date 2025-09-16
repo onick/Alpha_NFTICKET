@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
+import { Home, Calendar, Users, Ticket } from 'lucide-react'
 import { SimpleSidebar } from './SimpleSidebar'
 import { SimpleFeed } from './SimpleFeed'
 import { ProfileModal } from './ProfileModal'
@@ -74,10 +75,51 @@ export function TwitterLikeLayout() {
     <TrendingEvents key="trending" />
   ]
 
+  // Enhanced Feed content with personalization
+  const FeedWithHeader = () => (
+    <div className="space-y-6">
+      {/* Feed Controls */}
+      <div className="flex justify-end">
+        <div className="flex space-x-2">
+          <button className="px-3 py-1 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors duration-200">
+            Para Ti
+          </button>
+          <button className="px-3 py-1 text-sm text-text-muted hover:bg-surface-glass hover:text-white rounded-lg transition-colors duration-200">
+            Siguiendo
+          </button>
+        </div>
+      </div>
+      
+      {/* Quick Actions */}
+      <div className="grid grid-cols-3 gap-4 p-4 bg-[#313338] border border-[#404249] rounded-lg">
+        <button className="flex flex-col items-center space-y-2 p-3 hover:bg-[#404249]/50 rounded-lg transition-colors">
+          <div className="w-10 h-10 bg-green-500/20 rounded-full flex items-center justify-center">
+            <Calendar className="text-green-400" size={20} />
+          </div>
+          <span className="text-sm text-white">Explorar Eventos</span>
+        </button>
+        <button className="flex flex-col items-center space-y-2 p-3 hover:bg-[#404249]/50 rounded-lg transition-colors">
+          <div className="w-10 h-10 bg-purple-500/20 rounded-full flex items-center justify-center">
+            <Users className="text-purple-400" size={20} />
+          </div>
+          <span className="text-sm text-white">Mis Comunidades</span>
+        </button>
+        <button className="flex flex-col items-center space-y-2 p-3 hover:bg-[#404249]/50 rounded-lg transition-colors">
+          <div className="w-10 h-10 bg-blue-500/20 rounded-full flex items-center justify-center">
+            <Ticket className="text-blue-400" size={20} />
+          </div>
+          <span className="text-sm text-white">Mis Tickets</span>
+        </button>
+      </div>
+      
+      <SimpleFeed />
+    </div>
+  )
+
   // Main content based on current view
   const mainContent = currentView === 'profile' 
     ? <ProfileContent onClose={handleCloseProfile} />
-    : <SimpleFeed />
+    : <FeedWithHeader />
 
   return (
     <ModularLayout
@@ -85,6 +127,9 @@ export function TwitterLikeLayout() {
       mainContent={mainContent}
       rightModules={rightModules}
       showRightSidebar={true}
+      pageTitle={currentView === 'profile' ? 'Perfil' : 'Home'}
+      pageSubtitle={currentView === 'profile' ? undefined : 'Descubre los eventos más populares'}
+      showHeader={currentView !== 'profile'}
     />
   )
 }
@@ -98,6 +143,8 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = useState<'overview' | 'tickets' | 'activity' | 'preferences'>('overview')
   const [tickets, setTickets] = useState<any[]>([])
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const [selectedTicketForQR, setSelectedTicketForQR] = useState<any>(null)
+  const [isQRModalOpen, setIsQRModalOpen] = useState(false)
 
   useEffect(() => {
     // Load profile data
@@ -119,7 +166,9 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
           ...savedProfile,
           // Only fallback to auth data if saved data doesn't exist
           name: savedProfile.name || user.name,
-          avatar: savedProfile.avatar || user.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face'
+          avatar: savedProfile.avatar || user.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face',
+          // Ensure banner field exists (empty string if not set)
+          banner: savedProfile.banner || ''
         }
       } else {
         console.log('🆕 Creating new profile with default values')
@@ -129,6 +178,7 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
           name: user.name,
           email: user.email,
           avatar: user.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face',
+          banner: '', // Initialize banner field
           joinDate: user.created_at,
           bio: '',
           location: '',
@@ -225,19 +275,31 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
   }
 
   const handleSaveProfile = (newData: any) => {
+    console.log('💾 Profile save - received newData:', newData)
+    console.log('🖼️ Banner in newData:', newData.banner)
+    
     const updatedProfile = {
       ...profile,
       name: newData.name,
       bio: newData.bio,
       location: newData.location,
       website: newData.website,
-      avatar: newData.avatar
+      avatar: newData.avatar,
+      banner: newData.banner
     }
+    
+    console.log('💾 Final updatedProfile being saved:', updatedProfile)
+    console.log('🖼️ Banner in final profile:', updatedProfile.banner)
     
     setProfile(updatedProfile)
     
     // Persist to localStorage
     saveProfileToStorage(user.id, updatedProfile)
+  }
+
+  const handleShowQR = (ticket: any) => {
+    setSelectedTicketForQR(ticket)
+    setIsQRModalOpen(true)
   }
 
   const formatJoinDate = (dateString: string) => {
@@ -269,7 +331,7 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="space-y-6">
-      {/* Profile Header */}
+      {/* Profile Header - replaces any previous breadcrumb */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-4">
           <button 
@@ -287,7 +349,15 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
 
       {/* Profile Banner & Avatar */}
       <div className="relative">
-        <div className="h-48 bg-gradient-to-r from-purple-600 to-purple-800 rounded-t-2xl"></div>
+        <div className="h-48 bg-gradient-to-r from-purple-600 to-purple-800 rounded-t-2xl relative overflow-hidden">
+          {profile.banner && (
+            <img 
+              src={profile.banner} 
+              alt="Profile banner"
+              className="w-full h-full object-cover"
+            />
+          )}
+        </div>
         <div className="absolute -bottom-12 left-6">
           <img 
             src={profile.avatar} 
@@ -440,8 +510,38 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
             <div className="space-y-6">
               <div className="flex items-center justify-between">
                 <h3 className="text-xl font-bold text-white">Mis Tickets NFT</h3>
-                <div className="text-sm text-gray-400">
-                  {tickets.filter(t => t.status === 'active').length} activos • {tickets.filter(t => t.status === 'used').length} usados
+                <div className="flex items-center space-x-3">
+                  <div className="text-sm text-gray-400">
+                    {tickets.filter(t => t.status === 'active').length} activos • {tickets.filter(t => t.status === 'used').length} usados
+                  </div>
+                  {tickets.length > 0 && (
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => {
+                          tickets.forEach(ticket => {
+                            setTimeout(() => downloadTicketAsImage(ticket, profile.name), tickets.indexOf(ticket) * 500)
+                          })
+                        }}
+                        className="flex items-center space-x-2 px-3 py-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-sm"
+                        title="Descargar todos los tickets como PNG"
+                      >
+                        <Download size={16} />
+                        <span>PNG Todos</span>
+                      </button>
+                      <button 
+                        onClick={() => {
+                          tickets.forEach(ticket => {
+                            setTimeout(() => downloadTicketAsPDF(ticket, profile.name), tickets.indexOf(ticket) * 500)
+                          })
+                        }}
+                        className="flex items-center space-x-2 px-3 py-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-sm"
+                        title="Descargar todos los tickets como PDF"
+                      >
+                        <FileImage size={16} />
+                        <span>PDF Todos</span>
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
               
@@ -477,12 +577,43 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
                           </div>
                         </div>
                         <div className="text-right">
-                          <div className="text-brand-400 font-mono text-xs mb-2">
+                          <div className="text-brand-400 font-mono text-xs mb-3">
                             #{ticket.qrCode}
                           </div>
-                          <button className="px-3 py-1 text-xs bg-brand-500/20 text-brand-400 rounded hover:bg-brand-500/30 transition-colors">
-                            Ver QR
-                          </button>
+                          <div className="flex flex-col gap-2">
+                            <div className="flex gap-1">
+                              <button 
+                                onClick={() => downloadTicketAsImage(ticket, profile.name)}
+                                className="flex items-center space-x-1 px-2 py-1 text-xs bg-green-500/20 text-green-400 rounded hover:bg-green-500/30 transition-colors"
+                                title="Descargar ticket como imagen PNG"
+                              >
+                                <Download size={12} />
+                                <span>PNG</span>
+                              </button>
+                              <button 
+                                onClick={() => downloadTicketAsPDF(ticket, profile.name)}
+                                className="flex items-center space-x-1 px-2 py-1 text-xs bg-red-500/20 text-red-400 rounded hover:bg-red-500/30 transition-colors"
+                                title="Descargar ticket como PDF"
+                              >
+                                <FileImage size={12} />
+                                <span>PDF</span>
+                              </button>
+                              <button 
+                                onClick={() => shareTicket(ticket, profile.name)}
+                                className="flex items-center space-x-1 px-2 py-1 text-xs bg-blue-500/20 text-blue-400 rounded hover:bg-blue-500/30 transition-colors"
+                                title="Compartir ticket"
+                              >
+                                <Share2 size={12} />
+                              </button>
+                            </div>
+                            <button 
+                              onClick={() => handleShowQR(ticket)}
+                              className="px-3 py-1 text-xs bg-brand-500/20 text-brand-400 rounded hover:bg-brand-500/30 transition-colors"
+                            >
+                              <Eye size={12} className="inline mr-1" />
+                              Ver QR
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -592,11 +723,24 @@ function ProfileContent({ onClose }: { onClose: () => void }) {
           name: profile.name,
           email: profile.email,
           avatar: profile.avatar,
+          banner: profile.banner || '',
           bio: profile.bio || '',
           location: profile.location || '',
           website: profile.website || ''
         }}
       />
+
+      {selectedTicketForQR && (
+        <QRModal
+          isOpen={isQRModalOpen}
+          onClose={() => {
+            setIsQRModalOpen(false)
+            setSelectedTicketForQR(null)
+          }}
+          ticket={selectedTicketForQR}
+          userName={profile.name}
+        />
+      )}
     </div>
   )
 }
@@ -649,6 +793,8 @@ function loadProfileFromStorage(userId: string) {
 }
 
 // Import statements that were missing
-import { ArrowLeft, Eye, Activity, User, Ticket, Settings, Calendar, MapPin, MoreHorizontal } from 'lucide-react'
+import { ArrowLeft, Eye, Activity, User, Settings, MapPin, MoreHorizontal, Download, Share2, FileImage } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { getEcosystemManager } from '@/lib/ecosystem-integration'
+import { downloadTicketAsImage, downloadTicketAsPDF, shareTicket } from '@/lib/ticket-download'
+import { QRModal } from './QRModal'

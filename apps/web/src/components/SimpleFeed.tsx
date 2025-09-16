@@ -129,17 +129,6 @@ export function SimpleFeed() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-white">Feed Personalizado NFTicket</h2>
-        <div className="flex space-x-2">
-          <button className="px-3 py-1 text-sm bg-brand-500 text-white rounded-lg hover:bg-brand-600 transition-colors duration-200">
-            Reciente
-          </button>
-          <button className="px-3 py-1 text-sm text-text-muted hover:bg-surface-glass hover:text-white rounded-lg transition-colors duration-200">
-            Popular
-          </button>
-        </div>
-      </div>
 
       {feedItems.length === 0 ? (
         <div className="text-center py-12 text-text-muted">

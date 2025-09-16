@@ -2,14 +2,22 @@
 
 import { Home, TrendingUp, Hash, Plus, Users, User } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
+import { usePathname, useSearchParams } from 'next/navigation'
 
 export function SimpleSidebar() {
   const { user } = useAuth()
+  const pathname = usePathname()
+  const searchParams = useSearchParams()
+  
+  // Check current view from URL params
+  const currentView = searchParams.get('view')
+  
+  const currentPath = pathname
   
   const principalItems = [
-    { label: 'Home', href: '/', icon: Home, active: true },
-    { label: 'Popular', href: '/popular', icon: TrendingUp, active: false },
-    { label: 'Feed Social', href: '/feed', icon: Hash, active: false },
+    { label: 'Home', href: '/', icon: Home, active: currentPath === '/' && currentView !== 'profile' },
+    { label: 'Popular', href: '/popular', icon: TrendingUp, active: currentPath === '/popular' },
+    { label: 'Feed Social', href: '/feed', icon: Hash, active: currentPath === '/feed' },
   ]
 
   const communities = [
@@ -52,7 +60,11 @@ export function SimpleSidebar() {
                   (window as any).openProfileModal()
                 }
               }}
-              className="w-full flex items-center space-x-3 px-2 py-2 rounded-lg text-gray-300 hover:bg-gray-700/50 hover:text-white transition-all duration-200"
+              className={`w-full flex items-center space-x-3 px-2 py-2 rounded-lg transition-all duration-200 ${
+                currentView === 'profile'
+                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' 
+                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+              }`}
             >
               <User size={20} />
               <span className="font-medium">Mi Perfil</span>

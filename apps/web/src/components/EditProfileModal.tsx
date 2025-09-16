@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { X, Camera, Save, Loader2 } from 'lucide-react'
 import { Button } from '@nfticket/ui'
+import { compressImage, getImageSizeInfo } from '@/lib/image-utils'
 
 interface EditProfileModalProps {
   isOpen: boolean
@@ -12,6 +13,7 @@ interface EditProfileModalProps {
     name: string
     email: string
     avatar: string
+    banner?: string
     bio?: string
     location?: string
     website?: string
@@ -24,10 +26,14 @@ export function EditProfileModal({ isOpen, onClose, onSave, initialData }: EditP
     bio: '',
     location: '',
     website: '',
-    avatar: ''
+    avatar: '',
+    banner: ''
   })
   const [isSaving, setIsSaving] = useState(false)
   const [avatarPreview, setAvatarPreview] = useState('')
+  const [bannerPreview, setBannerPreview] = useState('')
+  const [isCompressing, setIsCompressing] = useState(false)
+  const [compressionError, setCompressionError] = useState('')
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -36,9 +42,11 @@ export function EditProfileModal({ isOpen, onClose, onSave, initialData }: EditP
         bio: initialData.bio || '',
         location: initialData.location || '',
         website: initialData.website || '',
-        avatar: initialData.avatar || ''
+        avatar: initialData.avatar || '',
+        banner: initialData.banner || ''
       })
       setAvatarPreview(initialData.avatar || '')
+      setBannerPreview(initialData.banner || '')
     }
   }, [isOpen, initialData])
 
@@ -49,24 +57,74 @@ export function EditProfileModal({ isOpen, onClose, onSave, initialData }: EditP
     }))
   }
 
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const result = e.target?.result as string
-        setAvatarPreview(result)
+      setIsCompressing(true)
+      setCompressionError('')
+      
+      try {
+        const compressedImage = await compressImage(file, {
+          maxWidth: 400,
+          maxHeight: 400,
+          quality: 0.8
+        })
+        
+        const sizeInfo = getImageSizeInfo(compressedImage)
+        console.log('🖼️ Avatar compressed:', sizeInfo.formatted)
+        
+        setAvatarPreview(compressedImage)
         setFormData(prev => ({
           ...prev,
-          avatar: result
+          avatar: compressedImage
         }))
+      } catch (error) {
+        console.error('Avatar compression failed:', error)
+        setCompressionError('Error comprimiendo imagen de perfil')
+      } finally {
+        setIsCompressing(false)
       }
-      reader.readAsDataURL(file)
+    }
+  }
+
+  const handleBannerChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      setIsCompressing(true)
+      setCompressionError('')
+      
+      try {
+        const compressedImage = await compressImage(file, {
+          maxWidth: 1200,
+          maxHeight: 400,
+          quality: 0.8
+        })
+        
+        const sizeInfo = getImageSizeInfo(compressedImage)
+        console.log('🖼️ Banner compressed:', sizeInfo.formatted)
+        
+        setBannerPreview(compressedImage)
+        setFormData(prev => ({
+          ...prev,
+          banner: compressedImage
+        }))
+      } catch (error) {
+        console.error('Banner compression failed:', error)
+        setCompressionError('Error comprimiendo imagen de portada')
+      } finally {
+        setIsCompressing(false)
+      }
     }
   }
 
   const handleSave = async () => {
+    if (isCompressing) {
+      return // Don't save while compressing
+    }
+
     setIsSaving(true)
+    setCompressionError('')
+    
     try {
       // Simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500))
@@ -74,6 +132,9 @@ export function EditProfileModal({ isOpen, onClose, onSave, initialData }: EditP
       onClose()
     } catch (error) {
       console.error('Error saving profile:', error)
+      if (error instanceof Error && error.message.includes('QuotaExceededError')) {
+        setCompressionError('Error: Espacio de almacenamiento insuficiente. Las imágenes son muy grandes.')
+      }
     } finally {
       setIsSaving(false)
     }
@@ -111,13 +172,18 @@ export function EditProfileModal({ isOpen, onClose, onSave, initialData }: EditP
           </div>
           <Button
             onClick={handleSave}
-            disabled={isSaving || !formData.name.trim()}
+            disabled={isSaving || isCompressing || !formData.name.trim()}
             className="bg-brand-500 hover:bg-brand-600 text-white px-6 py-2 flex items-center space-x-2"
           >
             {isSaving ? (
               <>
                 <Loader2 size={16} className="animate-spin" />
                 <span>Guardando...</span>
+              </>
+            ) : isCompressing ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span>Comprimiendo...</span>
               </>
             ) : (
               <>
@@ -130,16 +196,36 @@ export function EditProfileModal({ isOpen, onClose, onSave, initialData }: EditP
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-80px)]">
+          {/* Error Message */}
+          {compressionError && (
+            <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <p className="text-red-400 text-sm">{compressionError}</p>
+            </div>
+          )}
+          
           <div className="space-y-8">
             {/* Banner and Avatar Section */}
             <div className="relative">
               {/* Banner */}
               <div className="h-48 bg-gradient-to-r from-purple-600 to-purple-800 rounded-xl relative overflow-hidden">
+                {bannerPreview && (
+                  <img 
+                    src={bannerPreview} 
+                    alt="Banner preview"
+                    className="w-full h-full object-cover"
+                  />
+                )}
                 <div className="absolute inset-0 bg-black/20"></div>
                 <div className="absolute bottom-4 right-4">
-                  <button className="p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors">
+                  <label className="p-2 bg-black/50 hover:bg-black/70 rounded-full text-white transition-colors cursor-pointer">
                     <Camera size={18} />
-                  </button>
+                    <input 
+                      type="file" 
+                      accept="image/*"
+                      onChange={handleBannerChange}
+                      className="hidden"
+                    />
+                  </label>
                 </div>
               </div>
 
