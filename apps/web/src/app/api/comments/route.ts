@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     // Transformar a formato compatible con el frontend
     const transformedComments = comments.map(comment => ({
       id: comment.id,
+      parent_id: comment.parent_id,
       user: {
         id: comment.author.id,
         name: comment.author.full_name,

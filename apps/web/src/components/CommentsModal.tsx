@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
@@ -21,6 +21,8 @@ interface Comment {
   created_at: string
   likes_count: number
   is_liked?: boolean
+  parent_id?: string | null
+  replies?: Comment[]
 }
 
 interface CommentsModalProps {
@@ -35,6 +37,51 @@ interface CommentsModalProps {
   existingComments?: any[]
   onCommentLike?: (commentId: string, currentLikes: number) => void
   getCommentLikeState?: (commentId: string, originalCount: number) => { liked: boolean, count: number }
+}
+
+// Helper function to organize comments into nested structure
+const organizeComments = (comments: Comment[]): Comment[] => {
+  const rootComments: Comment[] = []
+  const allReplies = new Map<string, Comment[]>() // Map of root comment ID to all its replies
+
+  // First pass: separate root comments and collect all replies
+  comments.forEach(comment => {
+    if (!comment.parent_id) {
+      // This is a root comment
+      rootComments.push({ ...comment, replies: [] })
+      allReplies.set(comment.id, [])
+    }
+  })
+
+  // Second pass: collect ALL replies for each root comment (flatten nested structure)
+  comments.forEach(comment => {
+    if (comment.parent_id) {
+      // Find the root comment this reply ultimately belongs to
+      let rootId = comment.parent_id
+      let parentComment = comments.find(c => c.id === comment.parent_id)
+      
+      // Traverse up to find the root comment
+      while (parentComment && parentComment.parent_id) {
+        rootId = parentComment.parent_id
+        parentComment = comments.find(c => c.id === parentComment!.parent_id)
+      }
+      
+      // Add this reply to the root comment's flat replies list
+      if (allReplies.has(rootId)) {
+        allReplies.get(rootId)!.push({ ...comment, replies: [] })
+      }
+    }
+  })
+
+  // Third pass: attach flattened replies to root comments
+  rootComments.forEach(rootComment => {
+    const replies = allReplies.get(rootComment.id) || []
+    rootComment.replies = replies.sort((a, b) => 
+      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+    )
+  })
+
+  return rootComments
 }
 
 export function CommentsModal({ 
@@ -52,6 +99,7 @@ export function CommentsModal({
 }: CommentsModalProps) {
   const { user } = useAuth()
   const [comments, setComments] = useState<Comment[]>([])
+  const [organizedComments, setOrganizedComments] = useState<Comment[]>([])
   const [newComment, setNewComment] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isPostLiked, setIsPostLiked] = useState(false)
@@ -59,6 +107,28 @@ export function CommentsModal({
   const [postLikesCount, setPostLikesCount] = useState(post.likes_count)
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
+  const [visibleReplies, setVisibleReplies] = useState<{[commentId: string]: number}>({})
+  
+  // Ref for auto-focus on reply input
+  const replyInputRef = useRef<HTMLInputElement>(null)
+
+  // Constants for reply pagination
+  const INITIAL_REPLIES_SHOWN = 3
+  const REPLIES_LOAD_MORE = 10
+
+  // Helper functions
+  const getVisibleRepliesCount = (commentId: string) => {
+    return visibleReplies[commentId] || INITIAL_REPLIES_SHOWN
+  }
+
+  const showMoreReplies = (commentId: string, totalReplies: number) => {
+    const currentVisible = getVisibleRepliesCount(commentId)
+    const newVisible = Math.min(currentVisible + REPLIES_LOAD_MORE, totalReplies)
+    setVisibleReplies(prev => ({
+      ...prev,
+      [commentId]: newVisible
+    }))
+  }
 
   // Mock user for comments
   const defaultUser = {
@@ -74,6 +144,145 @@ export function CommentsModal({
       loadComments()
     }
   }, [isOpen, post.id, existingComments])
+
+  // Organize comments into nested structure whenever comments change
+  useEffect(() => {
+    const organized = organizeComments(comments)
+    setOrganizedComments(organized)
+  }, [comments])
+
+  // Auto-focus reply input when replyingTo changes
+  useEffect(() => {
+    if (replyingTo && replyInputRef.current) {
+      // Small timeout to ensure the input is rendered
+      setTimeout(() => {
+        replyInputRef.current?.focus()
+      }, 100)
+    }
+  }, [replyingTo])
+
+  // Recursive component to render nested comments
+  const CommentItem = ({ comment, isReply = false }: { comment: Comment, isReply?: boolean }) => (
+    <div className={`${isReply ? 'ml-8 mt-2' : ''}`}>
+      <div className="flex space-x-3">
+        <Avatar className={`${isReply ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0`}>
+          <AvatarImage src={comment.author.avatar_url} alt={comment.author.name} />
+          <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
+            {comment.author.name.charAt(0)}
+          </AvatarFallback>
+        </Avatar>
+        <div className="flex-1 min-w-0">
+          <div className={`bg-[#2b2d31] rounded-lg p-3 ${isReply ? 'bg-[#1e1f22]' : ''}`}>
+            <div className="flex items-center space-x-2 mb-1">
+              <span className={`font-semibold text-white ${isReply ? 'text-sm' : ''}`}>
+                {comment.author.name}
+              </span>
+              <span className={`text-gray-400 ${isReply ? 'text-xs' : 'text-sm'}`}>
+                @{comment.author.username}
+              </span>
+              <span className={`text-gray-500 ${isReply ? 'text-xs' : 'text-sm'}`}>
+                hace 2h
+              </span>
+            </div>
+            <p className={`text-gray-200 ${isReply ? 'text-sm' : ''}`}>
+              {comment.text}
+            </p>
+          </div>
+          
+          <div className={`flex items-center space-x-4 mt-2 ${isReply ? 'text-xs' : 'text-sm'}`}>
+            <button 
+              onClick={() => handleCommentLikeLocal(comment.id)}
+              className={`flex items-center space-x-1 transition-colors ${
+                comment.is_liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+              }`}
+            >
+              <Heart 
+                className={`${isReply ? 'h-3 w-3' : 'h-4 w-4'} ${comment.is_liked ? 'fill-current' : ''}`} 
+              />
+              <span>{comment.likes_count > 0 ? comment.likes_count : ''}</span>
+            </button>
+            
+            <button 
+              onClick={() => handleReply(comment.id, comment.author.name)}
+              className="text-gray-400 hover:text-gray-200 transition-colors"
+            >
+              Responder
+            </button>
+          </div>
+
+          {/* Render replies with pagination (Instagram-style) */}
+          {!isReply && comment.replies && comment.replies.length > 0 && (
+            <div className="mt-3 space-y-3">
+              {/* Show visible replies */}
+              {comment.replies.slice(0, getVisibleRepliesCount(comment.id)).map((reply) => (
+                <div key={reply.id} className="ml-8">
+                  <div className="flex space-x-3">
+                    <Avatar className="h-7 w-7 flex-shrink-0">
+                      <AvatarImage src={reply.author.avatar_url} alt={reply.author.name} />
+                      <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
+                        {reply.author.name.charAt(0)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <div className="bg-[#1e1f22] rounded-lg p-3">
+                        <div className="flex items-center space-x-2 mb-1">
+                          <span className="font-semibold text-sm text-white">
+                            {reply.author.name}
+                          </span>
+                          <span className="text-gray-400 text-xs">
+                            @{reply.author.username}
+                          </span>
+                          <span className="text-gray-500 text-xs">
+                            hace 2h
+                          </span>
+                        </div>
+                        <p className="text-gray-200 text-sm">
+                          {reply.text}
+                        </p>
+                      </div>
+                      
+                      <div className="flex items-center space-x-4 mt-2 text-xs">
+                        <button 
+                          onClick={() => handleCommentLikeLocal(reply.id)}
+                          className={`flex items-center space-x-1 transition-colors ${
+                            reply.is_liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+                          }`}
+                        >
+                          <Heart 
+                            className={`h-3 w-3 ${reply.is_liked ? 'fill-current' : ''}`} 
+                          />
+                          <span>{reply.likes_count > 0 ? reply.likes_count : ''}</span>
+                        </button>
+                        
+                        <button 
+                          onClick={() => handleReply(reply.id, reply.author.name)}
+                          className="text-gray-400 hover:text-gray-200 transition-colors"
+                        >
+                          Responder
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+              
+              {/* Show "Ver X respuestas más" button if there are hidden replies */}
+              {getVisibleRepliesCount(comment.id) < comment.replies.length && (
+                <div className="ml-8">
+                  <button
+                    onClick={() => showMoreReplies(comment.id, comment.replies.length)}
+                    className="text-gray-400 hover:text-white text-xs font-medium transition-colors"
+                  >
+                    Ver {Math.min(REPLIES_LOAD_MORE, comment.replies.length - getVisibleRepliesCount(comment.id))} respuestas más
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 
   const loadComments = async () => {
     try {
@@ -92,7 +301,8 @@ export function CommentsModal({
           },
           created_at: new Date().toISOString(),
           likes_count: comment.likes,
-          is_liked: comment.isLiked
+          is_liked: comment.isLiked,
+          parent_id: comment.parent_id || null
         }))
 
         // Load like status for each comment from Redis
@@ -340,7 +550,8 @@ export function CommentsModal({
           },
           created_at: new Date().toISOString(),
           likes_count: savedReply.likes,
-          is_liked: savedReply.isLiked
+          is_liked: savedReply.isLiked,
+          parent_id: replyingTo
         }
 
         // Add to local state for immediate display
@@ -558,56 +769,8 @@ export function CommentsModal({
 
           {/* Comments List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {comments.map((comment) => (
-              <div key={comment.id} className="flex space-x-3">
-                <Avatar className="h-8 w-8 flex-shrink-0">
-                  <AvatarImage src={comment.author.avatar_url} alt={comment.author.name} />
-                  <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
-                    {comment.author.name.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <div className="bg-[#2b2d31] rounded-lg p-3">
-                    <div className="flex items-center space-x-2 mb-1">
-                      <p className="font-medium text-sm text-white">{comment.author.name}</p>
-                      <p className="text-xs text-gray-400">@{comment.author.username}</p>
-                      <p className="text-xs text-gray-500">·</p>
-                      <p className="text-xs text-gray-500">{formatTimeAgo(comment.created_at)}</p>
-                    </div>
-                    <p className="text-sm text-gray-200">{comment.text}</p>
-                  </div>
-                  <div className="flex items-center space-x-2 mt-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleCommentLikeLocal(comment.id)}
-                      className={`h-6 px-2 text-xs ${
-                        getCommentLikeState ? 
-                          getCommentLikeState(comment.id, comment.likes_count).liked ? 'text-red-400' : 'text-gray-400' 
-                          : comment.is_liked ? 'text-red-400' : 'text-gray-400'
-                      }`}
-                    >
-                      <Heart className={`h-3 w-3 mr-1 ${
-                        getCommentLikeState ? 
-                          getCommentLikeState(comment.id, comment.likes_count).liked ? 'fill-current' : '' 
-                          : comment.is_liked ? 'fill-current' : ''
-                      }`} />
-                      {getCommentLikeState ? 
-                        getCommentLikeState(comment.id, comment.likes_count).count > 0 && getCommentLikeState(comment.id, comment.likes_count).count
-                        : comment.likes_count > 0 && comment.likes_count
-                      }
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleReply(comment.id, comment.author.username)}
-                      className="h-6 px-2 text-xs text-gray-400 hover:text-blue-400"
-                    >
-                      Responder
-                    </Button>
-                  </div>
-                </div>
-              </div>
+            {organizedComments.map((comment) => (
+              <CommentItem key={comment.id} comment={comment} />
             ))}
           </div>
 
@@ -637,6 +800,7 @@ export function CommentsModal({
                 </Avatar>
                 <div className="flex-1 flex space-x-2">
                   <input
+                    ref={replyInputRef}
                     type="text"
                     placeholder="Escribe tu respuesta..."
                     value={replyText}
