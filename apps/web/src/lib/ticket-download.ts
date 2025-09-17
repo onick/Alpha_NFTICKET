@@ -124,11 +124,9 @@ export async function downloadTicketAsPDF(ticket: TicketData, userName: string) 
   doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
   doc.rect(0, 0, pageWidth, pageHeight, 'F')
   
-  // Add lighter overlay
-  doc.setFillColor(255, 255, 255)
-  doc.setGlobalAlpha(0.1)
+  // Add lighter overlay (setGlobalAlpha not available in jsPDF)
+  doc.setFillColor(240, 240, 240)
   doc.rect(0, 0, pageWidth, pageHeight, 'F')
-  doc.setGlobalAlpha(1)
   
   // NFTicket Header
   doc.setTextColor(255, 255, 255)

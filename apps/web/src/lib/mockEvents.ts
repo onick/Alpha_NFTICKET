@@ -132,7 +132,8 @@ export const MOCK_EVENTS: Event[] = [
       id: 'organizer-004',
       username: 'aventura_music',
       full_name: 'Aventura Music',
-      avatar_url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100'
+      avatar_url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=100',
+      created_at: '2024-09-05T16:00:00.000Z'
     },
     ticket_types: [
       {
@@ -177,7 +178,8 @@ export const MOCK_EVENTS: Event[] = [
       id: 'organizer-005',
       username: 'startup_rd',
       full_name: 'Startup RD',
-      avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100'
+      avatar_url: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100',
+      created_at: '2024-09-10T09:00:00.000Z'
     },
     ticket_types: [
       {
@@ -214,7 +216,8 @@ export const MOCK_EVENTS: Event[] = [
       id: 'organizer-006',
       username: 'merengue_fest',
       full_name: 'Merengue Festival RD',
-      avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&seed=merengue'
+      avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=100&seed=merengue',
+      created_at: '2024-09-08T11:00:00.000Z'
     },
     ticket_types: [
       {
@@ -251,7 +254,8 @@ export const MOCK_EVENTS: Event[] = [
       id: 'organizer-007',
       username: 'arte_rd',
       full_name: 'Arte Contemporáneo RD',
-      avatar_url: 'https://images.unsplash.com/photo-1494790108755-2616b612b886?w=100&seed=arte'
+      avatar_url: 'https://images.unsplash.com/photo-1494790108755-2616b612b886?w=100&seed=arte',
+      created_at: '2024-08-20T15:00:00.000Z'
     },
     ticket_types: [
       {
@@ -288,7 +292,8 @@ export const MOCK_EVENTS: Event[] = [
       id: 'organizer-008',
       username: 'voley_americas',
       full_name: 'NORCECA Volleyball',
-      avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&seed=voley'
+      avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&seed=voley',
+      created_at: '2024-09-03T13:00:00.000Z'
     },
     ticket_types: [
       {

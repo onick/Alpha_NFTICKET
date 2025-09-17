@@ -75,39 +75,49 @@ export function CommentsModal({
     }
   }, [isOpen, post.id, existingComments])
 
-  const loadComments = () => {
-    // Mock comments data (only show if no existing comments)
-    const mockComments: Comment[] = existingComments.length === 0 ? [
-      {
-        id: '1',
-        text: '¡Increíble post! Me encanta la foto 📸',
-        author: {
-          id: 'user1',
-          name: 'María González',
-          username: 'mariag',
-          avatar_url: 'https://images.unsplash.com/photo-1494790108755-2616b612b5ab?w=32&h=32&fit=crop&crop=face'
-        },
-        created_at: new Date(Date.now() - 1000 * 60 * 30).toISOString(),
-        likes_count: 3,
-        is_liked: false
-      },
-      {
-        id: '2', 
-        text: 'Genial! ¿Dónde tomaste esta foto?',
-        author: {
-          id: 'user2',
-          name: 'Carlos Rodríguez',
-          username: 'carlosr',
-          avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=32&h=32&fit=crop&crop=face'
-        },
-        created_at: new Date(Date.now() - 1000 * 60 * 15).toISOString(),
-        likes_count: 1,
-        is_liked: false
+  const loadComments = async () => {
+    try {
+      setIsLoading(true)
+      const response = await fetch(`/api/comments?postId=${post.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        const apiComments = data.comments.map((comment: any) => ({
+          id: comment.id,
+          text: comment.content,
+          author: {
+            id: comment.user.id,
+            name: comment.user.name,
+            username: comment.user.username,
+            avatar_url: comment.user.avatar
+          },
+          created_at: new Date().toISOString(),
+          likes_count: comment.likes,
+          is_liked: comment.isLiked
+        }))
+        
+        // Combine with existing comments and remove duplicates
+        const allComments = [...apiComments, ...existingComments]
+        const uniqueComments = allComments.filter((comment, index, self) => 
+          index === self.findIndex(c => c.id === comment.id)
+        )
+        
+        setComments(uniqueComments)
+      } else {
+        // Fallback to existing comments and mock data
+        loadMockComments()
       }
-    ] : []
-    
-    // Combine mock comments with existing comments
-    setComments([...mockComments, ...existingComments])
+    } catch (error) {
+      console.error('Error loading comments:', error)
+      // Fallback to existing comments and mock data
+      loadMockComments()
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadMockComments = () => {
+    // Don't load mock comments for new posts - only use existing comments
+    setComments([...existingComments])
   }
 
   const handleAddComment = async () => {
@@ -116,31 +126,75 @@ export function CommentsModal({
     setIsLoading(true)
     
     try {
-      // Create new comment
-      const comment: Comment = {
-        id: Date.now().toString(),
-        text: newComment.trim(),
-        author: defaultUser,
-        created_at: new Date().toISOString(),
-        likes_count: 0,
-        is_liked: false
-      }
+      // Save comment to database via API
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId: post.id,
+          content: newComment.trim()
+        }),
+      })
 
-      // Add to local state for immediate display
-      setComments(prev => [...prev, comment])
-      setNewComment('')
-      
-      // Add to persistent storage via parent
-      onAddComment?.(post.id, comment)
-      
-      // TODO: Send to API
-      console.log('Adding comment:', comment)
-      
+      if (response.ok) {
+        const savedComment = await response.json()
+        
+        // Convert to our Comment format
+        const comment: Comment = {
+          id: savedComment.id,
+          text: savedComment.content,
+          author: {
+            id: savedComment.user.id,
+            name: savedComment.user.name,
+            username: savedComment.user.username,
+            avatar_url: savedComment.user.avatar
+          },
+          created_at: new Date().toISOString(),
+          likes_count: savedComment.likes,
+          is_liked: savedComment.isLiked
+        }
+
+        // Add to local state for immediate display
+        setComments(prev => [...prev, comment])
+        setNewComment('')
+        
+        // Add to persistent storage via parent
+        onAddComment?.(post.id, comment)
+        
+        // Update comment count
+        onNewComment?.(post.id)
+      } else {
+        console.error('Failed to save comment')
+        // Fallback: create comment locally
+        createLocalComment()
+      }
     } catch (error) {
-      console.error('Error adding comment:', error)
+      console.error('Error saving comment:', error)
+      // Fallback: create comment locally
+      createLocalComment()
     } finally {
       setIsLoading(false)
     }
+  }
+
+  const createLocalComment = () => {
+    const comment: Comment = {
+      id: Date.now().toString(),
+      text: newComment.trim(),
+      author: defaultUser,
+      created_at: new Date().toISOString(),
+      likes_count: 0,
+      is_liked: false
+    }
+
+    // Add to local state for immediate display
+    setComments(prev => [...prev, comment])
+    setNewComment('')
+    
+    // Add to persistent storage via parent
+    onAddComment?.(post.id, comment)
   }
 
   const handleCommentLikeLocal = (commentId: string) => {
@@ -156,9 +210,68 @@ export function CommentsModal({
     setReplyText(`@${authorName} `)
   }
 
-  const submitReply = () => {
+  const submitReply = async () => {
     if (!replyText.trim() || !replyingTo) return
     
+    setIsLoading(true)
+    
+    try {
+      // Save reply to database via API
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          postId: post.id,
+          content: replyText.trim(),
+          parentId: replyingTo // This makes it a reply
+        }),
+      })
+
+      if (response.ok) {
+        const savedReply = await response.json()
+        
+        // Convert to our Comment format
+        const replyComment: Comment = {
+          id: savedReply.id,
+          text: savedReply.content,
+          author: {
+            id: savedReply.user.id,
+            name: savedReply.user.name,
+            username: savedReply.user.username,
+            avatar_url: savedReply.user.avatar
+          },
+          created_at: new Date().toISOString(),
+          likes_count: savedReply.likes,
+          is_liked: savedReply.isLiked
+        }
+
+        // Add to local state for immediate display
+        setComments(prev => [...prev, replyComment])
+        setReplyText('')
+        setReplyingTo(null)
+        
+        // Add to persistent storage via parent
+        onAddComment?.(post.id, replyComment)
+        
+        // Update comment count
+        onNewComment?.(post.id)
+      } else {
+        console.error('Failed to save reply')
+        // Fallback: create reply locally
+        createLocalReply()
+      }
+    } catch (error) {
+      console.error('Error saving reply:', error)
+      // Fallback: create reply locally
+      createLocalReply()
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const createLocalReply = () => {
     const replyComment: Comment = {
       id: Date.now().toString(),
       text: replyText.trim(),

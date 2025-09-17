@@ -125,6 +125,19 @@ export default function TestComposerPage() {
                         <p className="text-white mt-2">{post.text}</p>
                       )}
                       
+                      {post.images && post.images.length > 0 && (
+                        <div className="grid grid-cols-2 gap-2 mt-3">
+                          {post.images.map((image: string, imgIndex: number) => (
+                            <img
+                              key={imgIndex}
+                              src={image}
+                              alt={`Post image ${imgIndex + 1}`}
+                              className="w-full h-32 object-cover rounded-lg"
+                            />
+                          ))}
+                        </div>
+                      )}
+                      
                       {post.hashtags && post.hashtags.length > 0 && (
                         <div className="flex flex-wrap gap-1 mt-2">
                           {post.hashtags.map((tag: string, index: number) => (

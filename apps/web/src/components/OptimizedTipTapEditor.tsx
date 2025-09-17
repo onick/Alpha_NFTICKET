@@ -112,8 +112,10 @@ const OptimizedTipTapEditor = forwardRef<OptimizedTipTapEditorRef, OptimizedTipT
     immediatelyRender: false,
     editable: true,
     onUpdate: handleUpdate,
-    onKeyDown: handleKeyDown,
-    editorProps,
+    editorProps: {
+      ...editorProps,
+      handleKeyDown: handleKeyDown,
+    },
   }, [isClient])
 
   useImperativeHandle(ref, () => ({

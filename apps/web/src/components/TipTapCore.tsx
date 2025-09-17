@@ -56,13 +56,13 @@ const TipTapCore = forwardRef<TipTapCoreRef, TipTapCoreProps>(({
       const html = editor.getHTML()
       onUpdate?.(html)
     },
-    onKeyDown: ({ event }) => {
-      if (onKeyDown) {
-        return onKeyDown(event)
-      }
-      return false
-    },
     editorProps: {
+      handleKeyDown: (view, event) => {
+        if (onKeyDown) {
+          return onKeyDown(event)
+        }
+        return false
+      },
       attributes: {
         class: `w-full bg-transparent text-white placeholder-gray-400 resize-none border-none outline-none text-lg leading-relaxed min-h-[60px] max-h-[200px] overflow-y-auto prose prose-invert prose-sm max-w-none focus:outline-none ${className}`,
       },

@@ -176,7 +176,7 @@ const ProductionTipTapEditor = memo(forwardRef<TipTapEditorRef, ProductionTipTap
   // Performance monitoring initialization - simplified dependencies
   useEffect(() => {
     if (enablePerformanceMonitoring) {
-      startMonitoring('production-editor')
+      startMonitoring()
       recordRender()
     }
   }, [enablePerformanceMonitoring]) // Only depend on the flag

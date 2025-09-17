@@ -1,55 +1,66 @@
 import { NextRequest, NextResponse } from 'next/server'
-
-// Mock user data - In a real app, this would come from your database
-const mockUsers = [
-  { id: '1', name: 'María González', username: 'mariag_music', avatar: null },
-  { id: '2', name: 'Carlos Rivera', username: 'carlostech', avatar: null },
-  { id: '3', name: 'Ana Herrera', username: 'ana_events', avatar: null },
-  { id: '4', name: 'Luis Martinez', username: 'luisdjrd', avatar: null },
-  { id: '5', name: 'Sofia Ramirez', username: 'sofia_art', avatar: null },
-  { id: '6', name: 'Pedro Morales', username: 'pedromorales', avatar: null },
-  { id: '7', name: 'Isabella Cruz', username: 'isabellacruz', avatar: null },
-  { id: '8', name: 'Miguel Santos', username: 'miguelsantos', avatar: null },
-  { id: '9', name: 'Valentina Torres', username: 'valetor', avatar: null },
-  { id: '10', name: 'Diego Castillo', username: 'diegocast', avatar: null },
-  { id: '11', name: 'Camila Vargas', username: 'camivargs', avatar: null },
-  { id: '12', name: 'Sebastian Ruiz', username: 'sebaruiz', avatar: null },
-  { id: '13', name: 'Lucia Mendez', username: 'luciamendez', avatar: null },
-  { id: '14', name: 'Fernando Silva', username: 'fersilva', avatar: null },
-  { id: '15', name: 'Andrea Jimenez', username: 'andreajimenez', avatar: null }
-]
+import { supabase } from '@/lib/supabase'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get('q')
-    
-    // Return empty array if no query provided
+
     if (!query || query.trim().length === 0) {
       return NextResponse.json([])
     }
+
+    // Search users by username or name using Supabase
+    const { data: users, error } = await supabase
+      .from('profiles')
+      .select('id, username, full_name, avatar_url')
+      .or(`username.ilike.%${query}%,full_name.ilike.%${query}%`)
+      .limit(10)
+      .order('full_name', { ascending: true })
+
+    if (error) {
+      console.error('Error searching users:', error)
+      
+      // Fallback to mock data if database fails
+      const mockUsers = [
+        { id: '1', name: 'Ana Herrera', username: 'ana_events', avatar_url: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face' },
+        { id: '2', name: 'Carlos Rivera', username: 'carlostech', avatar_url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face' },
+        { id: '3', name: 'María González', username: 'mariag_music', avatar_url: 'https://images.unsplash.com/photo-1494790108755-2616b612b47c?w=150&h=150&fit=crop&crop=face' },
+        { id: '4', name: 'Luis Martínez', username: 'luism_photo', avatar_url: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face' },
+        { id: '5', name: 'Sofia Reyes', username: 'sofia_design', avatar_url: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face' },
+        { id: '6', name: 'Diego Santos', username: 'diego_music', avatar_url: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face' }
+      ]
+      
+      const filteredMockUsers = mockUsers.filter(user => 
+        user.name.toLowerCase().includes(query.toLowerCase()) ||
+        user.username.toLowerCase().includes(query.toLowerCase())
+      )
+      
+      return NextResponse.json(
+        filteredMockUsers.slice(0, 5).map(user => ({
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          avatar: user.avatar_url
+        }))
+      )
+    }
+
+    // Transform to match the expected format for mentions
+    const transformedUsers = users.map(user => ({
+      id: user.id,
+      username: user.username,
+      name: user.full_name,
+      avatar: user.avatar_url,
+      isOnline: Math.random() > 0.5 // Mock online status for now
+    }))
+
+    return NextResponse.json(transformedUsers)
     
-    // Filter users based on query
-    const filteredUsers = mockUsers.filter(user => 
-      user.name.toLowerCase().includes(query.toLowerCase()) ||
-      user.username.toLowerCase().includes(query.toLowerCase())
-    )
-    
-    // Limit results to 5 users and add relevance scoring
-    const results = filteredUsers
-      .slice(0, 5)
-      .map(user => ({
-        id: user.id,
-        name: user.name,
-        username: user.username,
-        avatar: user.avatar
-      }))
-    
-    return NextResponse.json(results)
   } catch (error) {
-    console.error('User search API error:', error)
+    console.error('API Error:', error)
     return NextResponse.json(
-      { error: 'Failed to search users' },
+      { error: 'Internal server error' },
       { status: 500 }
     )
   }

@@ -233,8 +233,8 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
               <button
                 onClick={() => {
                   // We'll handle this with a callback prop later
-                  if (window.openProfileModal) {
-                    window.openProfileModal()
+                  if ((window as any).openProfileModal) {
+                    (window as any).openProfileModal()
                   } else {
                     window.location.href = '/perfil'
                   }
@@ -425,7 +425,6 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
             </div>
 
             <Button
-              type="submit"
               disabled={submitting}
               className="w-full mt-6 bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white font-medium py-3"
             >

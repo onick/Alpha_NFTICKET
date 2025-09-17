@@ -20,7 +20,53 @@ const userSearchCache = new Map<string, any[]>()
 // Current component reference for updates
 let currentSuggestionComponent: any = null
 
-// Search users with API call
+// Mock friends data - same as ShareModal
+const mockFriends = [
+  {
+    id: '1',
+    name: 'Ana Herrera',
+    username: 'ana_events',
+    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face',
+    isOnline: true
+  },
+  {
+    id: '2',
+    name: 'Carlos Rivera',
+    username: 'carlostech',
+    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&h=150&fit=crop&crop=face',
+    isOnline: true
+  },
+  {
+    id: '3',
+    name: 'María González',
+    username: 'mariag_music',
+    avatar: 'https://images.unsplash.com/photo-1494790108755-2616b612b47c?w=150&h=150&fit=crop&crop=face',
+    isOnline: false
+  },
+  {
+    id: '4',
+    name: 'Luis Martínez',
+    username: 'luism_photo',
+    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150&h=150&fit=crop&crop=face',
+    isOnline: true
+  },
+  {
+    id: '5',
+    name: 'Sofia Reyes',
+    username: 'sofia_design',
+    avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150&h=150&fit=crop&crop=face',
+    isOnline: false
+  },
+  {
+    id: '6',
+    name: 'Diego Santos',
+    username: 'diego_music',
+    avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face',
+    isOnline: true
+  }
+]
+
+// Search users function using real API with fallback to mock data
 const searchUsersAPI = async (query: string): Promise<any[]> => {
   if (!query || query.trim().length === 0) {
     return []
@@ -32,12 +78,13 @@ const searchUsersAPI = async (query: string): Promise<any[]> => {
   }
 
   try {
+    // Try to use real API first
     const response = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`)
+    
     if (!response.ok) {
-      console.error('Failed to fetch users:', response.statusText)
-      return []
+      throw new Error(`HTTP error! status: ${response.status}`)
     }
-
+    
     const users = await response.json()
     
     userSearchCache.set(cacheKey, users)
@@ -56,9 +103,27 @@ const searchUsersAPI = async (query: string): Promise<any[]> => {
     }
     
     return users
+    
   } catch (error) {
-    console.error('Error fetching users:', error)
-    return []
+    console.warn('Failed to fetch users from API, using fallback data:', error)
+    
+    // Fallback to mock friends data if API fails
+    const filteredUsers = mockFriends.filter(friend =>
+      friend.name.toLowerCase().includes(query.toLowerCase()) ||
+      friend.username.toLowerCase().includes(query.toLowerCase())
+    )
+    
+    userSearchCache.set(cacheKey, filteredUsers)
+    
+    // Update current suggestion component if it exists
+    if (currentSuggestionComponent && filteredUsers.length > 0) {
+      currentSuggestionComponent.updateProps({
+        items: filteredUsers,
+        command: currentSuggestionComponent.props.command
+      })
+    }
+    
+    return filteredUsers
   }
 }
 

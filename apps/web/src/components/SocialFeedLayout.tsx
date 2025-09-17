@@ -90,6 +90,71 @@ export function SocialFeedLayout() {
   const handlePost = async (postData: any) => {
     console.log('📝 Nuevo post creado desde feed:', postData)
     
+    try {
+      // Save post to database using the API
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: postData.text || '',
+          hashtags: postData.hashtags || [],
+          mentions: postData.mentions || [],
+          location: postData.location || null,
+          media: postData.images || [],
+        }),
+      })
+
+      if (response.ok) {
+        const savedPost = await response.json()
+        
+        // Convert the saved post to our SocialPost format
+        const newPost: SocialPost = {
+          id: savedPost.id,
+          user: {
+            id: savedPost.user.id,
+            name: savedPost.user.name,
+            username: savedPost.user.username,
+            avatar: savedPost.user.avatar,
+            verified: savedPost.user.verified,
+            following: savedPost.user.following
+          },
+          content: savedPost.content,
+          media: postData.images ? postData.images.map((image: string, index: number) => ({
+            id: `${Date.now()}-${index}`,
+            type: 'image' as const,
+            url: image,
+            thumbnail: image
+          })) : [],
+          location: savedPost.location,
+          event: postData.type === 'purchase' ? {
+            name: postData.event_name,
+            venue: postData.event_location || '',
+            date: postData.event_date || ''
+          } : undefined,
+          hashtags: savedPost.hashtags,
+          mentions: savedPost.mentions,
+          metrics: savedPost.metrics,
+          isLiked: savedPost.isLiked,
+          isSaved: savedPost.isSaved,
+          timestamp: savedPost.timestamp
+        }
+
+        setPosts(prevPosts => [newPost, ...prevPosts])
+      } else {
+        console.error('Failed to save post:', response.statusText)
+        // Fallback: create post locally if API fails
+        createLocalPostFromComposer(postData)
+      }
+    } catch (error) {
+      console.error('Error saving post:', error)
+      // Fallback: create post locally if API fails
+      createLocalPostFromComposer(postData)
+    }
+  }
+
+  const createLocalPostFromComposer = (postData: any) => {
     const newPost: SocialPost = {
       id: Date.now().toString(),
       user: {
@@ -123,15 +188,33 @@ export function SocialFeedLayout() {
       },
       isLiked: false,
       isSaved: false,
-      timestamp: new Date().toISOString()
+      timestamp: 'ahora mismo'
     }
     
     // Agregar el post al inicio de la lista
     setPosts(prevPosts => [newPost, ...prevPosts])
   }
 
-  useEffect(() => {
-    // Load social feed data
+  // Load posts from database on component mount
+  const loadPosts = async () => {
+    try {
+      const response = await fetch('/api/posts')
+      if (response.ok) {
+        const data = await response.json()
+        setPosts(data.posts || [])
+      } else {
+        console.error('Failed to load posts:', response.statusText)
+        // Load default mock data if API fails
+        loadMockPosts()
+      }
+    } catch (error) {
+      console.error('Error loading posts:', error)
+      // Load default mock data if API fails
+      loadMockPosts()
+    }
+  }
+
+  const loadMockPosts = () => {
     setPosts([
       {
         id: '1',
@@ -256,6 +339,11 @@ export function SocialFeedLayout() {
         timestamp: 'hace 12 horas'
       }
     ])
+  }
+
+  useEffect(() => {
+    // Load posts from database
+    loadPosts()
 
     setCommunities([
       {
@@ -371,21 +459,80 @@ export function SocialFeedLayout() {
     setIsCommentsOpen(true)
   }
 
-  const handleNewComment = (postId: string) => {
-    // Update comment count in the original post
-    setPosts(prevPosts => 
-      prevPosts.map(post => 
-        post.id === postId 
-          ? {
-              ...post,
-              metrics: {
-                ...post.metrics,
-                comments: post.metrics.comments + 1
+  const handleNewComment = async (postId: string) => {
+    // Refresh the specific post data from database to get accurate comment count and recent comments
+    try {
+      const response = await fetch('/api/posts')
+      if (response.ok) {
+        const data = await response.json()
+        const updatedPosts = data.posts || []
+        
+        // Find the updated post data
+        const updatedPost = updatedPosts.find((up: any) => up.id === postId)
+        if (updatedPost) {
+          setPosts(prevPosts => 
+            prevPosts.map(post => 
+              post.id === postId 
+                ? {
+                    ...post,
+                    metrics: {
+                      ...post.metrics,
+                      comments: updatedPost.metrics.comments
+                    },
+                    comments: updatedPost.comments || [] // Update comments preview
+                  }
+                : post
+            )
+          )
+        } else {
+          // Fallback: increment locally if post not found
+          setPosts(prevPosts => 
+            prevPosts.map(post => 
+              post.id === postId 
+                ? {
+                    ...post,
+                    metrics: {
+                      ...post.metrics,
+                      comments: post.metrics.comments + 1
+                    }
+                  }
+                : post
+            )
+          )
+        }
+      } else {
+        // Fallback: increment locally if API call fails
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post.id === postId 
+              ? {
+                  ...post,
+                  metrics: {
+                    ...post.metrics,
+                    comments: post.metrics.comments + 1
+                  }
+                }
+              : post
+          )
+        )
+      }
+    } catch (error) {
+      console.error('Error refreshing post data:', error)
+      // Fallback: increment locally if database fetch fails
+      setPosts(prevPosts => 
+        prevPosts.map(post => 
+          post.id === postId 
+            ? {
+                ...post,
+                metrics: {
+                  ...post.metrics,
+                  comments: post.metrics.comments + 1
+                }
               }
-            }
-          : post
+            : post
+        )
       )
-    )
+    }
   }
 
   const handleAddComment = (postId: string, comment: any) => {
@@ -471,7 +618,7 @@ export function SocialFeedLayout() {
     )
   }
 
-  const handleNewPost = () => {
+  const handleNewPost = async () => {
     // Get the current content directly from the editor
     const currentContent = editorRef.current?.getContent() || newPostContent
     
@@ -484,6 +631,66 @@ export function SocialFeedLayout() {
     // Convert HTML content to plain text for display
     const plainTextContent = htmlToPlainText(currentContent)
 
+    try {
+      // Save post to database
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: plainTextContent,
+          hashtags: hashtags,
+          mentions: mentions,
+        }),
+      })
+
+      if (response.ok) {
+        const savedPost = await response.json()
+        
+        // Convert the saved post to our SocialPost format
+        const newPost: SocialPost = {
+          id: savedPost.id,
+          user: {
+            id: savedPost.user.id,
+            name: savedPost.user.name,
+            username: savedPost.user.username,
+            avatar: savedPost.user.avatar,
+            verified: savedPost.user.verified,
+            following: savedPost.user.following
+          },
+          content: savedPost.content,
+          hashtags: savedPost.hashtags,
+          mentions: savedPost.mentions,
+          metrics: savedPost.metrics,
+          isLiked: savedPost.isLiked,
+          isSaved: savedPost.isSaved,
+          timestamp: savedPost.timestamp
+        }
+
+        setPosts(prevPosts => [newPost, ...prevPosts])
+        
+        // Clear the states and editor AFTER creating the post
+        setNewPostContent('')
+        setSelectedMedia([])
+        
+        // Clear the editor content with a small delay to ensure it happens after state updates
+        setTimeout(() => {
+          editorRef.current?.setContent('')
+        }, 100)
+      } else {
+        console.error('Failed to save post:', response.statusText)
+        // Fallback: create post locally if API fails
+        createLocalPost(plainTextContent, hashtags, mentions)
+      }
+    } catch (error) {
+      console.error('Error saving post:', error)
+      // Fallback: create post locally if API fails
+      createLocalPost(plainTextContent, hashtags, mentions)
+    }
+  }
+
+  const createLocalPost = (content: string, hashtags: string[], mentions: string[]) => {
     const newPost: SocialPost = {
       id: Date.now().toString(),
       user: {
@@ -494,7 +701,7 @@ export function SocialFeedLayout() {
         verified: false,
         following: false
       },
-      content: plainTextContent,
+      content: content,
       hashtags: hashtags,
       mentions: mentions,
       metrics: {
@@ -722,21 +929,43 @@ export function SocialFeedLayout() {
       {post.comments && post.comments.length > 0 && (
         <div className="mt-4 pt-3 border-t border-[#404249]">
           <div className="space-y-3">
-            {post.comments.slice(0, 2).map((comment) => (
+            {post.comments.slice(0, 3).map((comment) => (
               <div key={comment.id} className="flex space-x-2">
-                <img src={comment.user.avatar} alt={comment.user.name} className="w-6 h-6 rounded-full" />
-                <div className="flex-1">
+                <img src={comment.user.avatar} alt={comment.user.name} className="w-6 h-6 rounded-full flex-shrink-0" />
+                <div className="flex-1 min-w-0">
                   <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium text-white">{comment.user.name}</span>
-                    <span className="text-xs text-gray-400">{comment.timestamp}</span>
+                    <span className="text-sm font-medium text-white truncate">{comment.user.name}</span>
+                    <span className="text-xs text-gray-400 flex-shrink-0">{comment.timestamp}</span>
                   </div>
-                  <p className="text-sm text-gray-300">{comment.content}</p>
+                  <p className="text-sm text-gray-300 break-words">{comment.content}</p>
+                  <div className="flex items-center mt-1 space-x-3">
+                    <button className="text-xs text-gray-500 hover:text-red-400 transition-colors">
+                      ❤️ {comment.likes > 0 ? comment.likes : ''}
+                    </button>
+                    <button 
+                      onClick={() => handleComment(post)}
+                      className="text-xs text-gray-500 hover:text-blue-400 transition-colors"
+                    >
+                      Responder
+                    </button>
+                  </div>
                 </div>
               </div>
             ))}
-            {post.comments.length > 2 && (
-              <button className="text-sm text-brand-400 hover:text-brand-300">
-                Ver los {post.comments.length - 2} comentarios restantes
+            {post.comments.length > 3 && (
+              <button 
+                onClick={() => handleComment(post)}
+                className="text-sm text-brand-400 hover:text-brand-300 transition-colors"
+              >
+                Ver los {post.comments.length - 3} comentarios restantes...
+              </button>
+            )}
+            {post.comments.length <= 3 && post.metrics.comments > post.comments.length && (
+              <button 
+                onClick={() => handleComment(post)}
+                className="text-sm text-brand-400 hover:text-brand-300 transition-colors"
+              >
+                Ver todos los comentarios ({post.metrics.comments})
               </button>
             )}
           </div>

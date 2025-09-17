@@ -69,10 +69,27 @@ const MentionList = React.forwardRef<MentionListRef, MentionListProps>(
               }`}
               onClick={() => selectItem(index)}
             >
-              <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center">
-                <span className="text-white text-sm font-bold">
-                  {item.name.charAt(0)}
-                </span>
+              <div className="relative">
+                <img
+                  src={item.avatar}
+                  alt={item.name}
+                  className="w-8 h-8 rounded-full"
+                  onError={(e) => {
+                    // Fallback to initials if avatar fails to load
+                    const target = e.target as HTMLImageElement
+                    target.style.display = 'none'
+                    const fallback = target.nextSibling as HTMLElement
+                    if (fallback) fallback.style.display = 'flex'
+                  }}
+                />
+                <div className="w-8 h-8 bg-brand-500 rounded-full flex items-center justify-center absolute top-0 left-0" style={{ display: 'none' }}>
+                  <span className="text-white text-sm font-bold">
+                    {item.name.charAt(0)}
+                  </span>
+                </div>
+                {item.isOnline && (
+                  <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-[#313338] rounded-full"></div>
+                )}
               </div>
               <div>
                 <div className="text-white text-sm font-medium">{item.name}</div>
