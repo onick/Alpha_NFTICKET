@@ -155,10 +155,20 @@ export class CacheService {
   // Real-time counter management
   static async incrementCounter(key: string, amount: number = 1): Promise<number> {
     try {
-      if (!RedisClient.isRedisConnected()) {
-        console.log(`⚠️ Redis not connected, attempting to connect for key ${key}`)
-        // Try to connect
-        await redis.connect()
+      // Check Redis status and handle connection
+      if (redis.status !== 'ready') {
+        console.log(`⚠️ Redis status: ${redis.status} for key ${key}`)
+        
+        // If not connecting or connected, try to connect
+        if (redis.status === 'end' || redis.status === 'close') {
+          await redis.connect()
+        } else if (redis.status === 'connecting') {
+          // Wait for connection to complete
+          await new Promise(resolve => {
+            redis.once('ready', resolve)
+            redis.once('error', resolve) // Also resolve on error to avoid hanging
+          })
+        }
       }
 
       const result = await redis.incrby(key, amount)
@@ -174,8 +184,20 @@ export class CacheService {
   // Get counter value
   static async getCounter(key: string): Promise<number> {
     try {
-      if (!RedisClient.isRedisConnected()) {
-        return 0
+      // Check Redis status and handle connection
+      if (redis.status !== 'ready') {
+        console.log(`⚠️ Redis status: ${redis.status} for key ${key}`)
+        
+        // If not connecting or connected, try to connect
+        if (redis.status === 'end' || redis.status === 'close') {
+          await redis.connect()
+        } else if (redis.status === 'connecting') {
+          // Wait for connection to complete
+          await new Promise(resolve => {
+            redis.once('ready', resolve)
+            redis.once('error', resolve) // Also resolve on error to avoid hanging
+          })
+        }
       }
 
       const value = await redis.get(key)

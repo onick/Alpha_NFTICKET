@@ -37,13 +37,16 @@ export async function POST(request: NextRequest) {
     const userLikeKey = `user_likes:${currentUserId}:${targetType}:${targetId}`
 
     if (action === 'like') {
-      // Check if user already liked
+      // Check if user already liked - if so, treat as noop but don't error
       const alreadyLiked = await CacheService.get(userLikeKey)
       if (alreadyLiked) {
-        return NextResponse.json(
-          { error: 'Already liked' },
-          { status: 400 }
-        )
+        const currentCount = await CacheService.getCounter(counterKey)
+        return NextResponse.json({
+          success: true,
+          action: 'liked',
+          newCount: Math.max(0, currentCount),
+          isLiked: true
+        })
       }
 
       // 1. Update Redis counters first (for instant feedback)
@@ -87,22 +90,33 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({
         success: true,
         action: 'liked',
-        newCount,
+        newCount: Math.max(0, newCount), // Ensure count doesn't go negative
         isLiked: true
       })
 
     } else { // unlike
-      // Check if user actually liked it
+      // Check if user actually liked it - if not, treat as noop but don't error
       const wasLiked = await CacheService.get(userLikeKey)
+      
       if (!wasLiked) {
-        return NextResponse.json(
-          { error: 'Not liked yet' },
-          { status: 400 }
-        )
+        const currentCount = await CacheService.getCounter(counterKey)
+        return NextResponse.json({
+          success: true,
+          action: 'unliked',
+          newCount: Math.max(0, currentCount),
+          isLiked: false
+        })
       }
 
-      // 1. Update Redis counters first
-      const newCount = await CacheService.incrementCounter(counterKey, -1)
+      // 1. Get current count first to prevent negative values
+      const currentCount = await CacheService.getCounter(counterKey)
+      
+      // Only decrement if counter is greater than 0
+      let newCount = currentCount
+      if (currentCount > 0) {
+        newCount = await CacheService.incrementCounter(counterKey, -1)
+      }
+      
       await CacheService.del(userLikeKey)
 
       // 2. Update database in background
