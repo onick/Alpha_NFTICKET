@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import CacheService from '@/lib/redis'
+import { publishComment } from '@/lib/socket'
 
 // GET - Obtener comentarios de un post
 export async function GET(request: NextRequest) {
@@ -146,6 +147,15 @@ export async function POST(request: NextRequest) {
     await CacheService.invalidateCommentsCache(body.postId)
     await CacheService.invalidatePostsCache() // Posts cache includes comment counts
     console.log('🗑️ Comments and posts cache invalidated after new comment')
+
+    // 5. Publish real-time comment event (non-blocking)
+    try {
+      await publishComment(body.postId, transformedComment)
+      console.log('🚀 Real-time comment event published')
+    } catch (socketError) {
+      console.error('Socket.IO publish error (non-critical):', socketError)
+      // Don't fail the request if Socket.IO has issues
+    }
 
     return NextResponse.json(transformedComment, { status: 201 })
 

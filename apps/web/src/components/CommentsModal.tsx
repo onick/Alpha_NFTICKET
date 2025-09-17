@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { X, Heart, MessageCircle, Share, Bookmark, Send, MoreHorizontal } from 'lucide-react'
 import { FeedPostWithAuthor } from '@nfticket/feed'
 import { useAuth } from '@/lib/auth'
+import { useSocket } from '@/hooks/useSocket'
 
 interface Comment {
   id: string
@@ -111,6 +112,9 @@ export function CommentsModal({
   
   // Ref for auto-focus on reply input
   const replyInputRef = useRef<HTMLInputElement>(null)
+  
+  // Socket.IO integration
+  const { joinPost, leavePost, on, off, isConnected } = useSocket()
 
   // Constants for reply pagination
   const INITIAL_REPLIES_SHOWN = 3
@@ -160,6 +164,59 @@ export function CommentsModal({
       }, 100)
     }
   }, [replyingTo])
+
+  // Socket.IO real-time events
+  useEffect(() => {
+    if (!isOpen || !isConnected) return
+
+    // Join the post room for real-time comments
+    joinPost(post.id)
+    console.log(`🔗 Joined Socket.IO room for post: ${post.id}`)
+
+    // Listen for new comments
+    const handleNewComment = (newComment: Comment) => {
+      console.log('📨 Received new comment via Socket.IO:', newComment)
+      
+      // Add the new comment to the state
+      setComments(prev => {
+        // Avoid duplicates
+        const exists = prev.some(c => c.id === newComment.id)
+        if (exists) return prev
+        
+        return [...prev, newComment]
+      })
+
+      // Auto-expand replies if this is a new reply and user just created it
+      if (newComment.parent_id) {
+        const rootCommentId = newComment.parent_id
+        setVisibleReplies(prev => {
+          const currentVisible = prev[rootCommentId] || INITIAL_REPLIES_SHOWN
+          // Find the root comment to get total replies count
+          const rootComment = comments.find(c => c.id === rootCommentId)
+          if (rootComment && rootComment.replies) {
+            const totalReplies = rootComment.replies.length + 1 // +1 for the new reply
+            // If the new reply would be hidden, expand to show it
+            if (totalReplies > currentVisible) {
+              return {
+                ...prev,
+                [rootCommentId]: totalReplies
+              }
+            }
+          }
+          return prev
+        })
+      }
+    }
+
+    on('new_comment', handleNewComment)
+
+    // Cleanup: leave room and remove listeners when modal closes
+    return () => {
+      console.log(`🚪 Leaving Socket.IO room for post: ${post.id}`)
+      leavePost(post.id)
+      off('new_comment', handleNewComment)
+    }
+  }, [isOpen, isConnected, post.id, joinPost, leavePost, on, off, comments, INITIAL_REPLIES_SHOWN])
 
   // Recursive component to render nested comments
   const CommentItem = ({ comment, isReply = false }: { comment: Comment, isReply?: boolean }) => (
