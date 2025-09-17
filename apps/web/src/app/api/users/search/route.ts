@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import CacheService from '@/lib/redis'
 
 export async function GET(request: NextRequest) {
   try {
@@ -10,7 +11,15 @@ export async function GET(request: NextRequest) {
       return NextResponse.json([])
     }
 
-    // Search users by username or name using Supabase
+    // 1. Try to get from Redis cache first
+    const cachedUsers = await CacheService.getCachedUserSearch(query)
+    if (cachedUsers) {
+      console.log('📦 Serving user search from Redis cache')
+      return NextResponse.json(cachedUsers)
+    }
+
+    console.log('🔍 Cache miss - searching users in database')
+    // 2. If cache miss, search in Supabase
     const { data: users, error } = await supabase
       .from('profiles')
       .select('id, username, full_name, avatar_url')
@@ -54,6 +63,9 @@ export async function GET(request: NextRequest) {
       avatar: user.avatar_url,
       isOnline: Math.random() > 0.5 // Mock online status for now
     }))
+
+    // 3. Cache the search results
+    await CacheService.cacheUserSearch(query, transformedUsers)
 
     return NextResponse.json(transformedUsers)
     

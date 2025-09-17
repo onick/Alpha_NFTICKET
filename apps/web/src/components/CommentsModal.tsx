@@ -94,9 +94,30 @@ export function CommentsModal({
           likes_count: comment.likes,
           is_liked: comment.isLiked
         }))
+
+        // Load like status for each comment from Redis
+        const commentsWithLikeStatus = await Promise.all(
+          apiComments.map(async (comment: any) => {
+            try {
+              const likeResponse = await fetch(`/api/likes?targetId=${comment.id}&targetType=comment`)
+              if (likeResponse.ok) {
+                const likeData = await likeResponse.json()
+                return {
+                  ...comment,
+                  is_liked: likeData.isLiked,
+                  likes_count: likeData.count
+                }
+              }
+              return comment
+            } catch (error) {
+              console.error(`Error loading like status for comment ${comment.id}:`, error)
+              return comment
+            }
+          })
+        )
         
         // Combine with existing comments and remove duplicates
-        const allComments = [...apiComments, ...existingComments]
+        const allComments = [...commentsWithLikeStatus, ...existingComments]
         const uniqueComments = allComments.filter((comment, index, self) => 
           index === self.findIndex(c => c.id === comment.id)
         )
@@ -197,11 +218,86 @@ export function CommentsModal({
     onAddComment?.(post.id, comment)
   }
 
-  const handleCommentLikeLocal = (commentId: string) => {
+  const handleCommentLikeLocal = async (commentId: string) => {
     // Find the comment to get current likes
-    const comment = comments.find(c => c.id === commentId)
-    if (comment && onCommentLike) {
-      onCommentLike(commentId, comment.likes_count)
+    const currentComment = comments.find(c => c.id === commentId)
+    if (!currentComment) return
+
+    const action = currentComment.is_liked ? 'unlike' : 'like'
+
+    try {
+      // 1. Optimistic update for instant feedback
+      setComments(prevComments => 
+        prevComments.map(comment => 
+          comment.id === commentId 
+            ? {
+                ...comment,
+                is_liked: !comment.is_liked,
+                likes_count: comment.is_liked ? comment.likes_count - 1 : comment.likes_count + 1
+              }
+            : comment
+        )
+      )
+
+      // 2. Call Redis-powered API for persistence
+      const response = await fetch('/api/likes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetId: commentId,
+          targetType: 'comment',
+          action: action
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        
+        // 3. Update with server response (Redis counter)
+        setComments(prevComments => 
+          prevComments.map(comment => 
+            comment.id === commentId 
+              ? {
+                  ...comment,
+                  is_liked: result.isLiked,
+                  likes_count: result.newCount
+                }
+              : comment
+          )
+        )
+        
+        console.log(`✅ Comment ${action} successful - new count: ${result.newCount}`)
+      } else {
+        // 4. Revert optimistic update on error
+        setComments(prevComments => 
+          prevComments.map(comment => 
+            comment.id === commentId 
+              ? {
+                  ...comment,
+                  is_liked: currentComment.is_liked,
+                  likes_count: currentComment.likes_count
+                }
+              : comment
+          )
+        )
+        console.error('Failed to update comment like')
+      }
+    } catch (error) {
+      // 5. Revert optimistic update on network error
+      setComments(prevComments => 
+        prevComments.map(comment => 
+          comment.id === commentId 
+            ? {
+                ...comment,
+                is_liked: currentComment.is_liked,
+                likes_count: currentComment.likes_count
+              }
+            : comment
+        )
+      )
+      console.error('Error liking comment:', error)
     }
   }
 

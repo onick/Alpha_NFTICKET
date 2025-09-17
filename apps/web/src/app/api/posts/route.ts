@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import CacheService from '@/lib/redis'
 
 // GET - Obtener posts del feed
 export async function GET(request: NextRequest) {
@@ -8,7 +9,18 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get('limit') || '20')
     const offset = parseInt(searchParams.get('offset') || '0')
 
-    // Obtener posts con información del autor y comentarios (con límite para preview)
+    // 1. Try to get from Redis cache first
+    const cachedPosts = await CacheService.getCachedPosts(limit, offset)
+    if (cachedPosts) {
+      console.log('📦 Serving posts from Redis cache')
+      return NextResponse.json({
+        posts: cachedPosts,
+        hasMore: cachedPosts.length === limit
+      })
+    }
+
+    console.log('🗄️ Cache miss - fetching from database')
+    // 2. If cache miss, get from Supabase
     const { data: posts, error } = await supabase
       .from('posts')
       .select(`
@@ -77,6 +89,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
+    // 3. Cache the results for future requests
+    await CacheService.cachePosts(transformedPosts, limit, offset)
+    
     return NextResponse.json({
       posts: transformedPosts,
       hasMore: posts.length === limit
@@ -205,6 +220,10 @@ export async function POST(request: NextRequest) {
       isSaved: false,
       timestamp: 'ahora mismo'
     }
+
+    // 4. Invalidate posts cache since we have a new post
+    await CacheService.invalidatePostsCache()
+    console.log('🗑️ Posts cache invalidated after new post creation')
 
     return NextResponse.json(transformedPost, { status: 201 })
 

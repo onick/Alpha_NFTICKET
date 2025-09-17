@@ -201,7 +201,33 @@ export function SocialFeedLayout() {
       const response = await fetch('/api/posts')
       if (response.ok) {
         const data = await response.json()
-        setPosts(data.posts || [])
+        const posts = data.posts || []
+        
+        // For each post, load like status from Redis
+        const postsWithLikeStatus = await Promise.all(
+          posts.map(async (post: any) => {
+            try {
+              const likeResponse = await fetch(`/api/likes?targetId=${post.id}&targetType=post`)
+              if (likeResponse.ok) {
+                const likeData = await likeResponse.json()
+                return {
+                  ...post,
+                  isLiked: likeData.isLiked,
+                  metrics: {
+                    ...post.metrics,
+                    likes: likeData.count
+                  }
+                }
+              }
+              return post
+            } catch (error) {
+              console.error(`Error loading like status for post ${post.id}:`, error)
+              return post
+            }
+          })
+        )
+        
+        setPosts(postsWithLikeStatus)
       } else {
         console.error('Failed to load posts:', response.statusText)
         // Load default mock data if API fails
@@ -379,21 +405,99 @@ export function SocialFeedLayout() {
     ])
   }, [])
 
-  const handleLike = (postId: string) => {
-    setPosts(prevPosts => 
-      prevPosts.map(post => 
-        post.id === postId 
-          ? {
-              ...post,
-              isLiked: !post.isLiked,
-              metrics: {
-                ...post.metrics,
-                likes: post.isLiked ? post.metrics.likes - 1 : post.metrics.likes + 1
+  const handleLike = async (postId: string) => {
+    // Find the current post to determine like status
+    const currentPost = posts.find(p => p.id === postId)
+    if (!currentPost) return
+
+    const action = currentPost.isLiked ? 'unlike' : 'like'
+
+    try {
+      // 1. Optimistic update for instant feedback
+      setPosts(prevPosts => 
+        prevPosts.map(post => 
+          post.id === postId 
+            ? {
+                ...post,
+                isLiked: !post.isLiked,
+                metrics: {
+                  ...post.metrics,
+                  likes: post.isLiked ? post.metrics.likes - 1 : post.metrics.likes + 1
+                }
               }
-            }
-          : post
+            : post
+        )
       )
-    )
+
+      // 2. Call Redis-powered API for persistence
+      const response = await fetch('/api/likes', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetId: postId,
+          targetType: 'post',
+          action: action
+        }),
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        
+        // 3. Update with server response (Redis counter)
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post.id === postId 
+              ? {
+                  ...post,
+                  isLiked: result.isLiked,
+                  metrics: {
+                    ...post.metrics,
+                    likes: result.newCount
+                  }
+                }
+              : post
+          )
+        )
+        
+        console.log(`✅ ${action} successful - new count: ${result.newCount}`)
+      } else {
+        // 4. Revert optimistic update on error
+        setPosts(prevPosts => 
+          prevPosts.map(post => 
+            post.id === postId 
+              ? {
+                  ...post,
+                  isLiked: currentPost.isLiked,
+                  metrics: {
+                    ...post.metrics,
+                    likes: currentPost.metrics.likes
+                  }
+                }
+              : post
+          )
+        )
+        console.error('Failed to update like')
+      }
+    } catch (error) {
+      // 5. Revert optimistic update on network error
+      setPosts(prevPosts => 
+        prevPosts.map(post => 
+          post.id === postId 
+            ? {
+                ...post,
+                isLiked: currentPost.isLiked,
+                metrics: {
+                  ...post.metrics,
+                  likes: currentPost.metrics.likes
+                }
+              }
+            : post
+        )
+      )
+      console.error('Error liking post:', error)
+    }
   }
 
   const handleSave = (postId: string) => {

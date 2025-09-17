@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
+import CacheService from '@/lib/redis'
 
 // GET - Obtener comentarios de un post
 export async function GET(request: NextRequest) {
@@ -14,7 +15,17 @@ export async function GET(request: NextRequest) {
       )
     }
 
-    // Obtener todos los comentarios con información del autor
+    // 1. Try to get from Redis cache first
+    const cachedComments = await CacheService.getCachedComments(postId)
+    if (cachedComments) {
+      console.log('📦 Serving comments from Redis cache')
+      return NextResponse.json({
+        comments: cachedComments
+      })
+    }
+
+    console.log('🗃️ Cache miss - fetching comments from database')
+    // 2. If cache miss, get from Supabase
     const { data: comments, error } = await supabase
       .from('comments')
       .select(`
@@ -46,6 +57,9 @@ export async function GET(request: NextRequest) {
       likes: comment.likes_count,
       isLiked: false
     }))
+
+    // 3. Cache the comments for future requests
+    await CacheService.cacheComments(postId, transformedComments)
 
     return NextResponse.json({
       comments: transformedComments
@@ -126,6 +140,11 @@ export async function POST(request: NextRequest) {
       likes: comment.likes_count,
       isLiked: false
     }
+
+    // 4. Invalidate comments cache and posts cache 
+    await CacheService.invalidateCommentsCache(body.postId)
+    await CacheService.invalidatePostsCache() // Posts cache includes comment counts
+    console.log('🗑️ Comments and posts cache invalidated after new comment')
 
     return NextResponse.json(transformedComment, { status: 201 })
 
