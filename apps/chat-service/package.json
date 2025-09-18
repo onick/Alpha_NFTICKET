@@ -1,0 +1,48 @@
+{
+  "name": "@nfticket/chat-service",
+  "version": "1.0.0",
+  "description": "NFTicket Chat Microservice - Real-time messaging for event coordination",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "test": "vitest",
+    "docker:build": "docker build -t nfticket/chat-service .",
+    "docker:run": "docker run -p 3002:3002 nfticket/chat-service"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.7.4",
+    "redis": "^4.6.10",
+    "bull": "^4.12.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "rate-limiter-flexible": "^5.0.3",
+    "zod": "^3.22.4",
+    "jsonwebtoken": "^9.0.2",
+    "@supabase/supabase-js": "^2.38.4",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/cors": "^2.8.17",
+    "@types/morgan": "^1.9.9",
+    "@types/jsonwebtoken": "^9.0.5",
+    "@types/node": "^20.10.4",
+    "tsx": "^4.6.2",
+    "typescript": "^5.3.3",
+    "vitest": "^1.0.4"
+  },
+  "keywords": [
+    "chat",
+    "microservice",
+    "realtime",
+    "socket.io",
+    "events",
+    "messaging"
+  ],
+  "author": "NFTicket Team",
+  "license": "MIT"
+}

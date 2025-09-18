@@ -1,6 +1,7 @@
 'use client'
 
 import { ReactNode } from 'react'
+import { FloatingChatBar } from './FloatingChatBar'
 
 interface ModularLayoutProps {
   leftSidebar?: ReactNode
@@ -89,6 +90,8 @@ export function ModularLayout({
           </div>
         </div>
       </div>
+      {/* Floating Chat Bar */}
+      <FloatingChatBar />
     </div>
   )
 }
