@@ -110,6 +110,24 @@ export class CacheService {
     }
   }
 
+  // Delete cache keys by pattern
+  static async delPattern(pattern: string): Promise<boolean> {
+    try {
+      if (!RedisClient.isRedisConnected()) {
+        return false
+      }
+
+      const keys = await redis.keys(pattern)
+      if (keys.length > 0) {
+        await redis.del(...keys)
+      }
+      return true
+    } catch (error) {
+      console.error(`Redis DEL pattern error for pattern ${pattern}:`, error)
+      return false
+    }
+  }
+
   // Cache posts with specific TTL
   static async cachePosts(posts: any[], limit: number, offset: number): Promise<void> {
     const key = `posts:${limit}:${offset}`

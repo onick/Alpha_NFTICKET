@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import CacheService from '@/lib/redis'
+import { publishLike } from '@/lib/socket'
 
 // POST - Toggle like on post or comment
 export async function POST(request: NextRequest) {
@@ -72,6 +73,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 3. Invalidate related caches
+      let postId = targetType === 'post' ? targetId : null
       if (targetType === 'post') {
         await CacheService.invalidatePostsCache()
       } else {
@@ -83,8 +85,18 @@ export async function POST(request: NextRequest) {
           .single()
         
         if (comment) {
+          postId = comment.post_id
           await CacheService.invalidateCommentsCache(comment.post_id)
         }
+      }
+
+      // 4. Publish real-time like event (non-blocking)
+      try {
+        await publishLike(targetType, targetId, Math.max(0, newCount), true, postId)
+        console.log(`🚀 Real-time like event published for ${targetType} ${targetId}`)
+      } catch (socketError) {
+        console.error('Socket.IO like publish error (non-critical):', socketError)
+        // Don't fail the request if Socket.IO has issues
       }
 
       return NextResponse.json({
@@ -134,6 +146,7 @@ export async function POST(request: NextRequest) {
       }
 
       // 3. Invalidate related caches
+      let postId = targetType === 'post' ? targetId : null
       if (targetType === 'post') {
         await CacheService.invalidatePostsCache()
       } else {
@@ -144,8 +157,18 @@ export async function POST(request: NextRequest) {
           .single()
         
         if (comment) {
+          postId = comment.post_id
           await CacheService.invalidateCommentsCache(comment.post_id)
         }
+      }
+
+      // 4. Publish real-time unlike event (non-blocking)
+      try {
+        await publishLike(targetType, targetId, Math.max(0, newCount), false, postId)
+        console.log(`🚀 Real-time unlike event published for ${targetType} ${targetId}`)
+      } catch (socketError) {
+        console.error('Socket.IO unlike publish error (non-critical):', socketError)
+        // Don't fail the request if Socket.IO has issues
       }
 
       return NextResponse.json({

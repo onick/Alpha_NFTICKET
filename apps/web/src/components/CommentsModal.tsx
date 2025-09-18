@@ -1,11 +1,11 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo } from 'react'
 import { Card, CardContent, CardHeader } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
-import { X, Heart, MessageCircle, Share, Bookmark, Send, MoreHorizontal } from 'lucide-react'
+import { X, Heart, MessageCircle, Share, Bookmark, Send, MoreHorizontal, Ticket } from 'lucide-react'
 import { FeedPostWithAuthor } from '@nfticket/feed'
 import { useAuth } from '@/lib/auth'
 import { useSocket } from '@/hooks/useSocket'
@@ -42,47 +42,43 @@ interface CommentsModalProps {
 
 // Helper function to organize comments into nested structure
 const organizeComments = (comments: Comment[]): Comment[] => {
+  console.log('🔧 organizeComments called with', comments.length, 'comments')
+  
   const rootComments: Comment[] = []
-  const allReplies = new Map<string, Comment[]>() // Map of root comment ID to all its replies
+  const repliesMap = new Map<string, Comment[]>()
 
-  // First pass: separate root comments and collect all replies
+  // First pass: separate root comments and group replies
   comments.forEach(comment => {
     if (!comment.parent_id) {
       // This is a root comment
+      console.log('📝 Root comment found:', comment.id, comment.text?.substring(0, 20))
       rootComments.push({ ...comment, replies: [] })
-      allReplies.set(comment.id, [])
+      repliesMap.set(comment.id, [])
+    } else {
+      // This is a reply - add it to its parent's replies
+      console.log('💬 Reply found:', comment.id, 'parent:', comment.parent_id, comment.text?.substring(0, 20))
+      if (!repliesMap.has(comment.parent_id)) {
+        repliesMap.set(comment.parent_id, [])
+      }
+      repliesMap.get(comment.parent_id)!.push({ ...comment, replies: [] })
     }
   })
 
-  // Second pass: collect ALL replies for each root comment (flatten nested structure)
-  comments.forEach(comment => {
-    if (comment.parent_id) {
-      // Find the root comment this reply ultimately belongs to
-      let rootId = comment.parent_id
-      let parentComment = comments.find(c => c.id === comment.parent_id)
-      
-      // Traverse up to find the root comment
-      while (parentComment && parentComment.parent_id) {
-        rootId = parentComment.parent_id
-        parentComment = comments.find(c => c.id === parentComment!.parent_id)
-      }
-      
-      // Add this reply to the root comment's flat replies list
-      if (allReplies.has(rootId)) {
-        allReplies.get(rootId)!.push({ ...comment, replies: [] })
-      }
-    }
-  })
-
-  // Third pass: attach flattened replies to root comments
+  // Second pass: attach replies to root comments and sort them
   rootComments.forEach(rootComment => {
-    const replies = allReplies.get(rootComment.id) || []
+    const replies = repliesMap.get(rootComment.id) || []
+    console.log(`📎 Attaching ${replies.length} replies to root comment:`, rootComment.id)
     rootComment.replies = replies.sort((a, b) => 
       new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
     )
   })
 
-  return rootComments
+  const result = rootComments.sort((a, b) => 
+    new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+  )
+  
+  console.log('✅ organizeComments result:', result.length, 'root comments')
+  return result
 }
 
 export function CommentsModal({ 
@@ -100,7 +96,10 @@ export function CommentsModal({
 }: CommentsModalProps) {
   const { user } = useAuth()
   const [comments, setComments] = useState<Comment[]>([])
-  const [organizedComments, setOrganizedComments] = useState<Comment[]>([])
+  // Organize comments with replies - computed on every render
+  const organizedComments = useMemo(() => {
+    return organizeComments(comments)
+  }, [comments])
   const [newComment, setNewComment] = useState('')
   const [isLoading, setIsLoading] = useState(false)
   const [isPostLiked, setIsPostLiked] = useState(false)
@@ -109,12 +108,16 @@ export function CommentsModal({
   const [replyingTo, setReplyingTo] = useState<string | null>(null)
   const [replyText, setReplyText] = useState('')
   const [visibleReplies, setVisibleReplies] = useState<{[commentId: string]: number}>({})
+  const [typingUsers, setTypingUsers] = useState<{[userId: string]: {name: string, isTyping: boolean}}>({})
   
   // Ref for auto-focus on reply input
   const replyInputRef = useRef<HTMLInputElement>(null)
   
   // Socket.IO integration
-  const { joinPost, leavePost, on, off, isConnected } = useSocket()
+  const { joinPost, leavePost, on, off, isConnected, startTyping, stopTyping } = useSocket()
+  
+  // Typing timeout ref
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   // Constants for reply pagination
   const INITIAL_REPLIES_SHOWN = 3
@@ -142,6 +145,407 @@ export function CommentsModal({
     avatar_url: user?.avatar_url || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&h=150&fit=crop&crop=face'
   }
 
+  const loadComments = async () => {
+    try {
+      console.log('🔄 loadComments called for post:', post.id)
+      setIsLoading(true)
+      const response = await fetch(`/api/comments?postId=${post.id}`)
+      if (response.ok) {
+        const data = await response.json()
+        const apiComments = data.comments.map((comment: any) => ({
+          id: comment.id,
+          text: comment.content,
+          author: {
+            id: comment.user.id,
+            name: comment.user.name,
+            username: comment.user.username,
+            avatar_url: comment.user.avatar
+          },
+          created_at: new Date().toISOString(),
+          likes_count: comment.likes,
+          is_liked: comment.isLiked,
+          parent_id: comment.parent_id || null
+        }))
+
+        const commentsWithLikeStatus = await Promise.all(
+          apiComments.map(async (comment: any) => {
+            try {
+              const likeResponse = await fetch(`/api/likes?targetId=${comment.id}&targetType=comment`)
+              if (likeResponse.ok) {
+                const likeData = await likeResponse.json()
+                return {
+                  ...comment,
+                  is_liked: likeData.isLiked,
+                  likes_count: likeData.count
+                }
+              }
+              return comment
+            } catch (error) {
+              console.error(`Error loading like status for comment ${comment.id}:`, error)
+              return comment
+            }
+          })
+        )
+        
+        const allComments = [...commentsWithLikeStatus, ...existingComments]
+        console.log('🔄 All comments before deduplication:', allComments.length)
+        allComments.forEach(c => console.log(`  - ${c.id}: ${c.text?.substring(0, 20)} (parent_id: ${c.parent_id})`))
+        
+        // Use a Map to properly handle deduplication
+        const commentMap = new Map()
+        
+        allComments.forEach(comment => {
+          const existing = commentMap.get(comment.id)
+          const thisHasParent = comment.parent_id !== null && comment.parent_id !== undefined
+          
+          if (!existing) {
+            // First occurrence of this comment ID
+            commentMap.set(comment.id, comment)
+            console.log(`📝 Added comment ${comment.id}: ${comment.text?.substring(0, 20)} (parent_id: ${comment.parent_id})`)
+          } else {
+            // Duplicate found - decide which one to keep
+            const existingHasParent = existing.parent_id !== null && existing.parent_id !== undefined
+            
+            console.log(`🔍 Deduplication for ${comment.id}:`)
+            console.log(`  - Existing has parent_id: ${existingHasParent} (${existing.parent_id})`)
+            console.log(`  - New has parent_id: ${thisHasParent} (${comment.parent_id})`)
+            
+            // If new comment has parent_id but existing doesn't, replace with new one
+            if (thisHasParent && !existingHasParent) {
+              console.log(`  - Replacing with new comment (has parent_id)`)
+              commentMap.set(comment.id, comment)
+            } else {
+              console.log(`  - Keeping existing comment`)
+            }
+          }
+        })
+        
+        const uniqueComments = Array.from(commentMap.values())
+        
+        console.log('🔄 Unique comments after deduplication:', uniqueComments.length)
+        uniqueComments.forEach(c => console.log(`  - ${c.id}: ${c.text?.substring(0, 20)} (parent_id: ${c.parent_id})`))
+        
+        setComments(uniqueComments)
+        console.log('🔄 Comments state updated via loadComments')
+      } else {
+        console.error('Failed to load comments')
+        setComments([])
+      }
+    } catch (error) {
+      console.error('Error loading comments:', error)
+      setComments([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleSubmitComment = async () => {
+    if (!newComment.trim() || isLoading) return
+
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postId: post.id,
+          content: newComment.trim(),
+          author: defaultUser
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const newCommentData: Comment = {
+          id: result.id || `temp_${Date.now()}`,
+          text: newComment.trim(),
+          author: defaultUser,
+          created_at: new Date().toISOString(),
+          likes_count: 0,
+          is_liked: false,
+          parent_id: null
+        }
+
+        setComments(prev => [...prev, newCommentData])
+        setNewComment('')
+        onNewComment?.(post.id)
+        onAddComment?.(post.id, newCommentData)
+      }
+    } catch (error) {
+      console.error('Error posting comment:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleReply = (commentId: string, authorName: string) => {
+    setReplyingTo(commentId)
+    setReplyText(`@${authorName} `)
+  }
+
+  const handleSubmitReply = async () => {
+    if (!replyText.trim() || !replyingTo || isLoading) return
+
+    try {
+      setIsLoading(true)
+      const response = await fetch('/api/comments', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postId: post.id,
+          content: replyText.trim(),
+          author: defaultUser,
+          parent_id: replyingTo
+        })
+      })
+
+      if (response.ok) {
+        const result = await response.json()
+        const newReply: Comment = {
+          id: result.id || `temp_${Date.now()}`,
+          text: replyText.trim(),
+          author: defaultUser,
+          created_at: new Date().toISOString(),
+          likes_count: 0,
+          is_liked: false,
+          parent_id: replyingTo
+        }
+
+        setComments(prev => [...prev, newReply])
+        setReplyText('')
+        setReplyingTo(null)
+        
+        onNewComment?.(post.id)
+        onAddComment?.(post.id, newReply)
+      }
+    } catch (error) {
+      console.error('Error posting reply:', error)
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const handleCommentLikeLocal = async (commentId: string) => {
+    try {
+      const response = await fetch('/api/likes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetId: commentId,
+          targetType: 'comment',
+          action: 'toggle'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        
+        setComments(prev => prev.map(comment => {
+          if (comment.id === commentId) {
+            return {
+              ...comment,
+              is_liked: data.liked,
+              likes_count: data.count
+            }
+          }
+          
+          if (comment.replies) {
+            return {
+              ...comment,
+              replies: comment.replies.map(reply => 
+                reply.id === commentId 
+                  ? { ...reply, is_liked: data.liked, likes_count: data.count }
+                  : reply
+              )
+            }
+          }
+          
+          return comment
+        }))
+        
+        onCommentLike?.(commentId, data.count)
+      }
+    } catch (error) {
+      console.error('Error toggling comment like:', error)
+    }
+  }
+
+  const handleLike = async () => {
+    try {
+      const response = await fetch('/api/likes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          targetId: post.id,
+          targetType: 'post',
+          action: 'toggle'
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setIsPostLiked(data.liked)
+        setPostLikesCount(data.count)
+        onLike?.(post.id, data.liked)
+      }
+    } catch (error) {
+      console.error('Error toggling post like:', error)
+    }
+  }
+
+  const handleTyping = (text: string, isTyping: boolean) => {
+    if (isConnected && user) {
+      if (isTyping) {
+        startTyping(post.id, { id: user.id, name: user.name || 'Usuario' })
+        
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current)
+        }
+        
+        typingTimeoutRef.current = setTimeout(() => {
+          stopTyping(post.id, { id: user.id, name: user.name || 'Usuario' })
+        }, 3000)
+      } else {
+        stopTyping(post.id, { id: user.id, name: user.name || 'Usuario' })
+        if (typingTimeoutRef.current) {
+          clearTimeout(typingTimeoutRef.current)
+        }
+      }
+    }
+  }
+
+  // Component for rendering individual comments
+  const CommentItem = ({ comment, isReply = false }: { comment: Comment, isReply?: boolean }) => {
+    // Safety check for comment.author
+    if (!comment.author) {
+      console.warn('Comment without author:', comment)
+      return null
+    }
+
+    return (
+      <div className={`${isReply ? 'ml-8 mt-2' : ''}`}>
+        <div className="flex space-x-3">
+          <Avatar className={`${isReply ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0`}>
+            <AvatarImage src={comment.author?.avatar_url || ''} alt={comment.author?.name || 'Usuario'} />
+            <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
+              {comment.author?.name?.charAt(0) || 'U'}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <div className={`bg-[#2b2d31] rounded-lg p-3 ${isReply ? 'bg-[#1e1f22]' : ''}`}>
+              <div className="flex items-center space-x-2 mb-1">
+                <span className={`font-semibold text-white ${isReply ? 'text-sm' : ''}`}>
+                  {comment.author?.name || 'Usuario Desconocido'}
+                </span>
+                <span className={`text-gray-400 ${isReply ? 'text-xs' : 'text-sm'}`}>
+                  @{comment.author?.username || 'usuario'}
+                </span>
+                <span className={`text-gray-500 ${isReply ? 'text-xs' : 'text-sm'}`}>
+                  hace 2h
+                </span>
+              </div>
+              <p className={`text-gray-200 ${isReply ? 'text-sm' : ''}`}>
+                {comment.text}
+              </p>
+            </div>
+            
+            <div className={`flex items-center space-x-4 mt-2 ${isReply ? 'text-xs' : 'text-sm'}`}>
+              <button 
+                onClick={() => handleCommentLikeLocal(comment.id)}
+                className={`flex items-center space-x-1 transition-colors ${
+                  comment.is_liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+                }`}
+              >
+                <Heart 
+                  className={`${isReply ? 'h-3 w-3' : 'h-4 w-4'} ${comment.is_liked ? 'fill-current' : ''}`} 
+                />
+                <span>{comment.likes_count > 0 ? comment.likes_count : ''}</span>
+              </button>
+              
+              <button 
+                onClick={() => handleReply(comment.id, comment.author.name)}
+                className="text-gray-400 hover:text-gray-200 transition-colors"
+              >
+                Responder
+              </button>
+            </div>
+
+            {/* Render replies with pagination (Instagram-style) */}
+            {!isReply && comment.replies && comment.replies.length > 0 && (
+              <div className="mt-3 space-y-3">
+                {/* Show visible replies */}
+                {comment.replies.slice(0, getVisibleRepliesCount(comment.id)).map((reply) => (
+                  <div key={reply.id} className="ml-8">
+                    <div className="flex space-x-3">
+                      <Avatar className="h-7 w-7 flex-shrink-0">
+                        <AvatarImage src={reply.author?.avatar_url || ''} alt={reply.author?.name || 'Usuario'} />
+                        <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
+                          {reply.author?.name?.charAt(0) || 'U'}
+                        </AvatarFallback>
+                      </Avatar>
+                      <div className="flex-1 min-w-0">
+                        <div className="bg-[#1e1f22] rounded-lg p-3">
+                          <div className="flex items-center space-x-2 mb-1">
+                            <span className="font-semibold text-sm text-white">
+                              {reply.author?.name || 'Usuario Desconocido'}
+                            </span>
+                            <span className="text-gray-400 text-xs">
+                              @{reply.author?.username || 'usuario'}
+                            </span>
+                            <span className="text-gray-500 text-xs">
+                              hace 2h
+                            </span>
+                          </div>
+                          <p className="text-gray-200 text-sm">
+                            {reply.text}
+                          </p>
+                        </div>
+                        
+                        <div className="flex items-center space-x-4 mt-2 text-xs">
+                          <button 
+                            onClick={() => handleCommentLikeLocal(reply.id)}
+                            className={`flex items-center space-x-1 transition-colors ${
+                              reply.is_liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+                            }`}
+                          >
+                            <Heart 
+                              className={`h-3 w-3 ${reply.is_liked ? 'fill-current' : ''}`} 
+                            />
+                            <span>{reply.likes_count > 0 ? reply.likes_count : ''}</span>
+                          </button>
+                          
+                          <button 
+                            onClick={() => handleReply(reply.id, reply.author?.name || 'Usuario')}
+                            className="text-gray-400 hover:text-gray-200 transition-colors"
+                          >
+                            Responder
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                
+                {/* Show "Ver X respuestas más" button if there are hidden replies */}
+                {getVisibleRepliesCount(comment.id) < comment.replies.length && (
+                  <div className="ml-8">
+                    <button
+                      onClick={() => showMoreReplies(comment.id, comment.replies!.length)}
+                      className="text-gray-400 hover:text-white text-xs font-medium transition-colors"
+                    >
+                      Ver {Math.min(REPLIES_LOAD_MORE, comment.replies.length - getVisibleRepliesCount(comment.id))} respuestas más
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Effects
   useEffect(() => {
     if (isOpen) {
       // Load existing comments and mock comments
@@ -149,11 +553,6 @@ export function CommentsModal({
     }
   }, [isOpen, post.id, existingComments])
 
-  // Organize comments into nested structure whenever comments change
-  useEffect(() => {
-    const organized = organizeComments(comments)
-    setOrganizedComments(organized)
-  }, [comments])
 
   // Auto-focus reply input when replyingTo changes
   useEffect(() => {
@@ -176,14 +575,26 @@ export function CommentsModal({
     // Listen for new comments
     const handleNewComment = (newComment: Comment) => {
       console.log('📨 Received new comment via Socket.IO:', newComment)
+      console.log('🔍 Comment parent_id:', newComment.parent_id)
+      console.log('🔍 Comment structure:', JSON.stringify(newComment, null, 2))
       
-      // Add the new comment to the state
+      // Handle the new comment based on whether it's a reply or root comment
       setComments(prev => {
         // Avoid duplicates
         const exists = prev.some(c => c.id === newComment.id)
-        if (exists) return prev
+        if (exists) {
+          console.log('⚠️ Duplicate comment detected, skipping:', newComment.id)
+          return prev
+        }
         
-        return [...prev, newComment]
+        // Add all comments (both root and replies) to the main array
+        // The organizeComments function will handle organizing them properly
+        console.log(`📝 Adding ${newComment.parent_id ? 'reply' : 'root comment'} to comments array`)
+        console.log('📝 New comment being added:', JSON.stringify(newComment, null, 2))
+        
+        const newState = [...prev, newComment]
+        console.log('📝 New comments state will have', newState.length, 'total comments')
+        return newState
       })
 
       // Auto-expand replies if this is a new reply and user just created it
@@ -208,722 +619,258 @@ export function CommentsModal({
       }
     }
 
+    // Listen for typing indicators
+    const handleUserTyping = (data: { user: any, isTyping: boolean }) => {
+      console.log('✍️ Typing update:', data)
+      setTypingUsers(prev => ({
+        ...prev,
+        [data.user.id]: {
+          name: data.user.name,
+          isTyping: data.isTyping
+        }
+      }))
+      
+      // Clear typing indicator after 3 seconds if user stops
+      if (!data.isTyping) {
+        setTimeout(() => {
+          setTypingUsers(prev => {
+            const updated = { ...prev }
+            delete updated[data.user.id]
+            return updated
+          })
+        }, 3000)
+      }
+    }
+
     on('new_comment', handleNewComment)
+    on('user_typing', handleUserTyping)
 
     // Cleanup: leave room and remove listeners when modal closes
     return () => {
       console.log(`🚪 Leaving Socket.IO room for post: ${post.id}`)
       leavePost(post.id)
       off('new_comment', handleNewComment)
+      off('user_typing', handleUserTyping)
     }
   }, [isOpen, isConnected, post.id, joinPost, leavePost, on, off, comments, INITIAL_REPLIES_SHOWN])
 
-  // Recursive component to render nested comments
-  const CommentItem = ({ comment, isReply = false }: { comment: Comment, isReply?: boolean }) => (
-    <div className={`${isReply ? 'ml-8 mt-2' : ''}`}>
-      <div className="flex space-x-3">
-        <Avatar className={`${isReply ? 'h-7 w-7' : 'h-8 w-8'} flex-shrink-0`}>
-          <AvatarImage src={comment.author.avatar_url} alt={comment.author.name} />
-          <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
-            {comment.author.name.charAt(0)}
-          </AvatarFallback>
-        </Avatar>
-        <div className="flex-1 min-w-0">
-          <div className={`bg-[#2b2d31] rounded-lg p-3 ${isReply ? 'bg-[#1e1f22]' : ''}`}>
-            <div className="flex items-center space-x-2 mb-1">
-              <span className={`font-semibold text-white ${isReply ? 'text-sm' : ''}`}>
-                {comment.author.name}
-              </span>
-              <span className={`text-gray-400 ${isReply ? 'text-xs' : 'text-sm'}`}>
-                @{comment.author.username}
-              </span>
-              <span className={`text-gray-500 ${isReply ? 'text-xs' : 'text-sm'}`}>
-                hace 2h
-              </span>
-            </div>
-            <p className={`text-gray-200 ${isReply ? 'text-sm' : ''}`}>
-              {comment.text}
-            </p>
-          </div>
-          
-          <div className={`flex items-center space-x-4 mt-2 ${isReply ? 'text-xs' : 'text-sm'}`}>
-            <button 
-              onClick={() => handleCommentLikeLocal(comment.id)}
-              className={`flex items-center space-x-1 transition-colors ${
-                comment.is_liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
-              }`}
-            >
-              <Heart 
-                className={`${isReply ? 'h-3 w-3' : 'h-4 w-4'} ${comment.is_liked ? 'fill-current' : ''}`} 
-              />
-              <span>{comment.likes_count > 0 ? comment.likes_count : ''}</span>
-            </button>
-            
-            <button 
-              onClick={() => handleReply(comment.id, comment.author.name)}
-              className="text-gray-400 hover:text-gray-200 transition-colors"
-            >
-              Responder
-            </button>
-          </div>
-
-          {/* Render replies with pagination (Instagram-style) */}
-          {!isReply && comment.replies && comment.replies.length > 0 && (
-            <div className="mt-3 space-y-3">
-              {/* Show visible replies */}
-              {comment.replies.slice(0, getVisibleRepliesCount(comment.id)).map((reply) => (
-                <div key={reply.id} className="ml-8">
-                  <div className="flex space-x-3">
-                    <Avatar className="h-7 w-7 flex-shrink-0">
-                      <AvatarImage src={reply.author.avatar_url} alt={reply.author.name} />
-                      <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-xs">
-                        {reply.author.name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="bg-[#1e1f22] rounded-lg p-3">
-                        <div className="flex items-center space-x-2 mb-1">
-                          <span className="font-semibold text-sm text-white">
-                            {reply.author.name}
-                          </span>
-                          <span className="text-gray-400 text-xs">
-                            @{reply.author.username}
-                          </span>
-                          <span className="text-gray-500 text-xs">
-                            hace 2h
-                          </span>
-                        </div>
-                        <p className="text-gray-200 text-sm">
-                          {reply.text}
-                        </p>
-                      </div>
-                      
-                      <div className="flex items-center space-x-4 mt-2 text-xs">
-                        <button 
-                          onClick={() => handleCommentLikeLocal(reply.id)}
-                          className={`flex items-center space-x-1 transition-colors ${
-                            reply.is_liked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
-                          }`}
-                        >
-                          <Heart 
-                            className={`h-3 w-3 ${reply.is_liked ? 'fill-current' : ''}`} 
-                          />
-                          <span>{reply.likes_count > 0 ? reply.likes_count : ''}</span>
-                        </button>
-                        
-                        <button 
-                          onClick={() => handleReply(reply.id, reply.author.name)}
-                          className="text-gray-400 hover:text-gray-200 transition-colors"
-                        >
-                          Responder
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-              
-              {/* Show "Ver X respuestas más" button if there are hidden replies */}
-              {getVisibleRepliesCount(comment.id) < comment.replies.length && (
-                <div className="ml-8">
-                  <button
-                    onClick={() => showMoreReplies(comment.id, comment.replies.length)}
-                    className="text-gray-400 hover:text-white text-xs font-medium transition-colors"
-                  >
-                    Ver {Math.min(REPLIES_LOAD_MORE, comment.replies.length - getVisibleRepliesCount(comment.id))} respuestas más
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )
-
-  const loadComments = async () => {
-    try {
-      setIsLoading(true)
-      const response = await fetch(`/api/comments?postId=${post.id}`)
-      if (response.ok) {
-        const data = await response.json()
-        const apiComments = data.comments.map((comment: any) => ({
-          id: comment.id,
-          text: comment.content,
-          author: {
-            id: comment.user.id,
-            name: comment.user.name,
-            username: comment.user.username,
-            avatar_url: comment.user.avatar
-          },
-          created_at: new Date().toISOString(),
-          likes_count: comment.likes,
-          is_liked: comment.isLiked,
-          parent_id: comment.parent_id || null
-        }))
-
-        // Load like status for each comment from Redis
-        const commentsWithLikeStatus = await Promise.all(
-          apiComments.map(async (comment: any) => {
-            try {
-              const likeResponse = await fetch(`/api/likes?targetId=${comment.id}&targetType=comment`)
-              if (likeResponse.ok) {
-                const likeData = await likeResponse.json()
-                return {
-                  ...comment,
-                  is_liked: likeData.isLiked,
-                  likes_count: likeData.count
-                }
-              }
-              return comment
-            } catch (error) {
-              console.error(`Error loading like status for comment ${comment.id}:`, error)
-              return comment
-            }
-          })
-        )
-        
-        // Combine with existing comments and remove duplicates
-        const allComments = [...commentsWithLikeStatus, ...existingComments]
-        const uniqueComments = allComments.filter((comment, index, self) => 
-          index === self.findIndex(c => c.id === comment.id)
-        )
-        
-        setComments(uniqueComments)
-      } else {
-        // Fallback to existing comments and mock data
-        loadMockComments()
+  // Cleanup typing timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current)
       }
-    } catch (error) {
-      console.error('Error loading comments:', error)
-      // Fallback to existing comments and mock data
-      loadMockComments()
-    } finally {
-      setIsLoading(false)
     }
-  }
-
-  const loadMockComments = () => {
-    // Don't load mock comments for new posts - only use existing comments
-    setComments([...existingComments])
-  }
-
-  const handleAddComment = async () => {
-    if (!newComment.trim()) return
-
-    setIsLoading(true)
-    
-    try {
-      // Save comment to database via API
-      const response = await fetch('/api/comments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          postId: post.id,
-          content: newComment.trim()
-        }),
-      })
-
-      if (response.ok) {
-        const savedComment = await response.json()
-        
-        // Convert to our Comment format
-        const comment: Comment = {
-          id: savedComment.id,
-          text: savedComment.content,
-          author: {
-            id: savedComment.user.id,
-            name: savedComment.user.name,
-            username: savedComment.user.username,
-            avatar_url: savedComment.user.avatar
-          },
-          created_at: new Date().toISOString(),
-          likes_count: savedComment.likes,
-          is_liked: savedComment.isLiked
-        }
-
-        // Add to local state for immediate display
-        setComments(prev => [...prev, comment])
-        setNewComment('')
-        
-        // Add to persistent storage via parent
-        onAddComment?.(post.id, comment)
-        
-        // Update comment count
-        onNewComment?.(post.id)
-      } else {
-        console.error('Failed to save comment')
-        // Fallback: create comment locally
-        createLocalComment()
-      }
-    } catch (error) {
-      console.error('Error saving comment:', error)
-      // Fallback: create comment locally
-      createLocalComment()
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const createLocalComment = () => {
-    const comment: Comment = {
-      id: Date.now().toString(),
-      text: newComment.trim(),
-      author: defaultUser,
-      created_at: new Date().toISOString(),
-      likes_count: 0,
-      is_liked: false
-    }
-
-    // Add to local state for immediate display
-    setComments(prev => [...prev, comment])
-    setNewComment('')
-    
-    // Add to persistent storage via parent
-    onAddComment?.(post.id, comment)
-  }
-
-  const handleCommentLikeLocal = async (commentId: string) => {
-    // Find the comment to get current likes
-    const currentComment = comments.find(c => c.id === commentId)
-    if (!currentComment) return
-
-    const action = currentComment.is_liked ? 'unlike' : 'like'
-
-    try {
-      // 1. Optimistic update for instant feedback
-      setComments(prevComments => 
-        prevComments.map(comment => 
-          comment.id === commentId 
-            ? {
-                ...comment,
-                is_liked: !comment.is_liked,
-                likes_count: comment.is_liked ? comment.likes_count - 1 : comment.likes_count + 1
-              }
-            : comment
-        )
-      )
-
-      // 2. Call Redis-powered API for persistence
-      const response = await fetch('/api/likes', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          targetId: commentId,
-          targetType: 'comment',
-          action: action
-        }),
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        
-        // 3. Update with server response (Redis counter)
-        setComments(prevComments => 
-          prevComments.map(comment => 
-            comment.id === commentId 
-              ? {
-                  ...comment,
-                  is_liked: result.isLiked,
-                  likes_count: result.newCount
-                }
-              : comment
-          )
-        )
-        
-        console.log(`✅ Comment ${action} successful - new count: ${result.newCount}`)
-      } else {
-        // 4. Revert optimistic update on error
-        setComments(prevComments => 
-          prevComments.map(comment => 
-            comment.id === commentId 
-              ? {
-                  ...comment,
-                  is_liked: currentComment.is_liked,
-                  likes_count: currentComment.likes_count
-                }
-              : comment
-          )
-        )
-        console.error('Failed to update comment like')
-      }
-    } catch (error) {
-      // 5. Revert optimistic update on network error
-      setComments(prevComments => 
-        prevComments.map(comment => 
-          comment.id === commentId 
-            ? {
-                ...comment,
-                is_liked: currentComment.is_liked,
-                likes_count: currentComment.likes_count
-              }
-            : comment
-        )
-      )
-      console.error('Error liking comment:', error)
-    }
-  }
-
-  const handleReply = (commentId: string, authorName: string) => {
-    setReplyingTo(commentId)
-    setReplyText(`@${authorName} `)
-  }
-
-  const submitReply = async () => {
-    if (!replyText.trim() || !replyingTo) return
-    
-    setIsLoading(true)
-    
-    try {
-      // Save reply to database via API
-      const response = await fetch('/api/comments', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          postId: post.id,
-          content: replyText.trim(),
-          parentId: replyingTo // This makes it a reply
-        }),
-      })
-
-      if (response.ok) {
-        const savedReply = await response.json()
-        
-        // Convert to our Comment format
-        const replyComment: Comment = {
-          id: savedReply.id,
-          text: savedReply.content,
-          author: {
-            id: savedReply.user.id,
-            name: savedReply.user.name,
-            username: savedReply.user.username,
-            avatar_url: savedReply.user.avatar
-          },
-          created_at: new Date().toISOString(),
-          likes_count: savedReply.likes,
-          is_liked: savedReply.isLiked,
-          parent_id: replyingTo
-        }
-
-        // Add to local state for immediate display
-        setComments(prev => [...prev, replyComment])
-        setReplyText('')
-        setReplyingTo(null)
-        
-        // Add to persistent storage via parent
-        onAddComment?.(post.id, replyComment)
-        
-        // Update comment count
-        onNewComment?.(post.id)
-      } else {
-        console.error('Failed to save reply')
-        // Fallback: create reply locally
-        createLocalReply()
-      }
-    } catch (error) {
-      console.error('Error saving reply:', error)
-      // Fallback: create reply locally
-      createLocalReply()
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const createLocalReply = () => {
-    const replyComment: Comment = {
-      id: Date.now().toString(),
-      text: replyText.trim(),
-      author: defaultUser,
-      created_at: new Date().toISOString(),
-      likes_count: 0,
-      is_liked: false
-    }
-
-    setComments(prev => [...prev, replyComment])
-    setReplyText('')
-    setReplyingTo(null)
-    onAddComment?.(post.id, replyComment)
-  }
-
-  const handlePostLike = async () => {
-    const newLiked = !isPostLiked
-    setIsPostLiked(newLiked)
-    setPostLikesCount(prev => newLiked ? prev + 1 : prev - 1)
-    
-    try {
-      await onLike?.(post.id, newLiked)
-    } catch (error) {
-      // Revert on error
-      setIsPostLiked(!newLiked)
-      setPostLikesCount(prev => newLiked ? prev - 1 : prev + 1)
-    }
-  }
-
-  const handlePostSave = async () => {
-    const newSaved = !isPostSaved
-    setIsPostSaved(newSaved)
-    
-    try {
-      await onSave?.(post.id, newSaved)
-    } catch (error) {
-      setIsPostSaved(!newSaved)
-    }
-  }
-
-  const formatTimeAgo = (dateString: string) => {
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffInMinutes = Math.floor((now.getTime() - date.getTime()) / (1000 * 60))
-    
-    if (diffInMinutes < 1) return 'ahora'
-    if (diffInMinutes < 60) return `${diffInMinutes}m`
-    const diffInHours = Math.floor(diffInMinutes / 60)
-    if (diffInHours < 24) return `${diffInHours}h`
-    const diffInDays = Math.floor(diffInHours / 24)
-    return `${diffInDays}d`
-  }
-
-  const getTypeColor = (type: string) => {
-    switch (type) {
-      case 'user': return 'bg-blue-100 text-blue-800'
-      case 'community': return 'bg-green-100 text-green-800'
-      case 'activity': return 'bg-purple-100 text-purple-800'
-      default: return 'bg-gray-100 text-gray-800'
-    }
-  }
+  }, [])
 
   if (!isOpen) return null
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-[#313338] rounded-lg w-full max-w-2xl max-h-[90vh] overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-[#404249]">
-          <h2 className="text-lg font-semibold text-white">Comentarios</h2>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onClose}
-            className="h-8 w-8 p-0 text-gray-400 hover:text-white"
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-
-        <div className="flex flex-col h-[calc(90vh-80px)]">
-          {/* Original Post */}
-          <div className="p-4 border-b border-[#404249]">
-            <Card className="w-full bg-[#2b2d31] border-[#404249]">
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="h-10 w-10">
-                      <AvatarImage src={post.author.avatar_url} alt={post.author.name} />
-                      <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white">
-                        {post.author.name.charAt(0)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="flex items-center space-x-2">
-                        <p className="font-semibold text-sm text-white">{post.author.name}</p>
-                        <Badge variant="secondary" className={`text-xs ${getTypeColor(post.type)}`}>
-                          {post.type}
-                        </Badge>
-                      </div>
-                      <p className="text-xs text-gray-400">
-                        @{post.author.username} · {formatTimeAgo(post.created_at)}
-                      </p>
-                    </div>
-                  </div>
-                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-gray-400">
-                    <MoreHorizontal className="h-4 w-4" />
-                  </Button>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <Card className="w-full max-w-4xl max-h-[90vh] bg-[#1e1f22] border-[#404249] flex flex-col">
+        <CardHeader className="flex-shrink-0 pb-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <Avatar className="h-10 w-10">
+                <AvatarImage src={post.author.avatar_url} alt={post.author.name} />
+                <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white">
+                  {post.author.name.charAt(0)}
+                </AvatarFallback>
+              </Avatar>
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="font-semibold text-white">{post.author.name}</span>
+                  <Badge className="bg-purple-500/20 text-purple-400 border-purple-500/30">
+                    <Ticket className="h-3 w-3 mr-1" />
+                    Verificado
+                  </Badge>
                 </div>
-              </CardHeader>
-
-              <CardContent className="pt-0">
-                {post.text && (
-                  <div className="mb-4">
-                    <p className="text-sm leading-relaxed text-white">{post.text}</p>
-                  </div>
-                )}
-
-                {/* Images */}
-                {post.media && post.media.length > 0 && (
-                  <div className="mb-4">
-                    <div className={`grid gap-2 rounded-lg overflow-hidden ${
-                      post.media.length === 1 ? 'grid-cols-1' : 'grid-cols-2'
-                    }`}>
-                      {post.media.slice(0, 4).map((media, index) => (
-                        <div key={media.id || index} className="relative">
-                          <img 
-                            src={media.url} 
-                            alt={`Post image ${index + 1}`}
-                            className="w-full h-32 object-cover"
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {post.hashtags && post.hashtags.length > 0 && (
-                  <div className="mb-4 flex flex-wrap gap-1">
-                    {post.hashtags.map((tag, index) => (
-                      <span key={index} className="text-blue-400 text-sm hover:underline cursor-pointer">
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                )}
-
-                <div className="flex items-center justify-between pt-2 border-t border-[#404249]">
-                  <div className="flex items-center space-x-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handlePostLike}
-                      className={`flex items-center space-x-1 ${isPostLiked ? 'text-red-400' : 'text-gray-400'}`}
-                    >
-                      <Heart className={`h-4 w-4 ${isPostLiked ? 'fill-current' : ''}`} />
-                      <span className="text-xs">{postLikesCount}</span>
-                    </Button>
-
-                    <div className="flex items-center space-x-1 text-blue-400">
-                      <MessageCircle className="h-4 w-4" />
-                      <span className="text-xs">{comments.length}</span>
-                    </div>
-
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => onShare?.(post.id)}
-                      className="flex items-center space-x-1 text-gray-400"
-                    >
-                      <Share className="h-4 w-4" />
-                      <span className="text-xs">{post.shares_count}</span>
-                    </Button>
-                  </div>
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handlePostSave}
-                    className={`${isPostSaved ? 'text-yellow-400' : 'text-gray-400'}`}
-                  >
-                    <Bookmark className={`h-4 w-4 ${isPostSaved ? 'fill-current' : ''}`} />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Comments List */}
-          <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {organizedComments.map((comment) => (
-              <CommentItem key={comment.id} comment={comment} />
-            ))}
-          </div>
-
-          {/* Reply Input */}
-          {replyingTo && (
-            <div className="p-4 border-t border-[#404249] bg-[#2b2d31]">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-sm text-blue-400">Respondiendo a un comentario</p>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setReplyingTo(null)
-                    setReplyText('')
-                  }}
-                  className="h-6 w-6 p-0 text-gray-400 hover:text-white"
-                >
-                  ×
-                </Button>
+                <span className="text-sm text-gray-400">@{post.author.username}</span>
               </div>
-              <div className="flex space-x-3">
-                <Avatar className="h-8 w-8 flex-shrink-0">
-                  <AvatarImage src={defaultUser.avatar_url} alt={defaultUser.name} />
-                  <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-600 text-white text-xs">
-                    {defaultUser.name.charAt(0)}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 flex space-x-2">
+            </div>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-5 w-5" />
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent className="flex-1 overflow-hidden flex flex-col px-6 pb-6">
+          {/* Post Content */}
+          <div className="flex-shrink-0 mb-4">
+            <p className="text-white mb-3">{post.text}</p>
+            {post.media && post.media.length > 0 && (
+              <div className="relative rounded-lg overflow-hidden mb-3">
+                <img 
+                  src={post.media[0].url} 
+                  alt="Post content" 
+                  className="w-full max-h-80 object-cover"
+                />
+              </div>
+            )}
+            
+            {/* Post Actions */}
+            <div className="flex items-center justify-between pt-3 border-t border-[#404249]">
+              <div className="flex items-center space-x-6">
+                <button 
+                  onClick={handleLike}
+                  className={`flex items-center space-x-2 transition-colors ${
+                    isPostLiked ? 'text-red-500' : 'text-gray-400 hover:text-red-400'
+                  }`}
+                >
+                  <Heart className={`h-5 w-5 ${isPostLiked ? 'fill-current' : ''}`} />
+                  <span>{postLikesCount > 0 ? postLikesCount : ''}</span>
+                </button>
+                
+                <button className="flex items-center space-x-2 text-gray-400 hover:text-gray-200 transition-colors">
+                  <MessageCircle className="h-5 w-5" />
+                  <span>{organizedComments.length}</span>
+                </button>
+                
+                <button 
+                  onClick={() => onShare?.(post.id)}
+                  className="flex items-center space-x-2 text-gray-400 hover:text-gray-200 transition-colors"
+                >
+                  <Share className="h-5 w-5" />
+                </button>
+                
+                <button 
+                  onClick={() => {
+                    setIsPostSaved(!isPostSaved)
+                    onSave?.(post.id, !isPostSaved)
+                  }}
+                  className={`transition-colors ${
+                    isPostSaved ? 'text-yellow-500' : 'text-gray-400 hover:text-yellow-400'
+                  }`}
+                >
+                  <Bookmark className={`h-5 w-5 ${isPostSaved ? 'fill-current' : ''}`} />
+                </button>
+              </div>
+              
+              <button className="text-gray-400 hover:text-gray-200 transition-colors">
+                <MoreHorizontal className="h-5 w-5" />
+              </button>
+            </div>
+          </div>
+
+          {/* Comments Section */}
+          <div className="flex-1 flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto pr-2 space-y-4">
+              {isLoading && organizedComments.length === 0 ? (
+                <div className="flex items-center justify-center py-8">
+                  <div className="animate-spin h-6 w-6 border-b-2 border-purple-500 rounded-full"></div>
+                </div>
+              ) : organizedComments.length === 0 ? (
+                <div className="text-center py-8">
+                  <MessageCircle className="h-12 w-12 text-gray-500 mx-auto mb-4" />
+                  <p className="text-gray-400">No hay comentarios aún</p>
+                  <p className="text-gray-500 text-sm">¡Sé el primero en comentar!</p>
+                </div>
+              ) : (
+                organizedComments.map((comment) => (
+                  <CommentItem key={comment.id} comment={comment} />
+                ))
+              )}
+
+              {/* Typing indicators */}
+              {Object.values(typingUsers).some(user => user.isTyping) && (
+                <div className="flex items-center space-x-2 text-gray-400 text-sm">
+                  <div className="flex space-x-1">
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.3s]"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce [animation-delay:-0.15s]"></div>
+                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></div>
+                  </div>
+                  <span>
+                    {Object.values(typingUsers)
+                      .filter(user => user.isTyping)
+                      .map(user => user.name)
+                      .join(', ')} está escribiendo...
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Reply Interface */}
+            {replyingTo && (
+              <div className="flex-shrink-0 bg-[#2b2d31] rounded-lg p-3 mb-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm text-gray-400">
+                    Respondiendo a comentario
+                  </span>
+                  <button 
+                    onClick={() => {
+                      setReplyingTo(null)
+                      setReplyText('')
+                    }}
+                    className="text-gray-400 hover:text-white"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+                
+                <div className="flex space-x-2">
                   <input
                     ref={replyInputRef}
-                    type="text"
-                    placeholder="Escribe tu respuesta..."
                     value={replyText}
-                    onChange={(e) => setReplyText(e.target.value)}
-                    onKeyDown={(e) => {
+                    onChange={(e) => {
+                      setReplyText(e.target.value)
+                      handleTyping(e.target.value, e.target.value.length > 0)
+                    }}
+                    onKeyPress={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault()
-                        submitReply()
+                        handleSubmitReply()
                       }
                     }}
-                    className="flex-1 bg-[#313338] border border-[#404249] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Escribe tu respuesta..."
+                    className="flex-1 bg-[#404249] border-[#5c5f66] text-white placeholder:text-gray-400 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
-                  <Button
-                    onClick={submitReply}
-                    disabled={!replyText.trim()}
-                    size="sm"
-                    className="px-3"
+                  <Button 
+                    onClick={handleSubmitReply}
+                    disabled={!replyText.trim() || isLoading}
+                    className="bg-purple-500 hover:bg-purple-600 text-white px-4"
                   >
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Comment Input */}
-          <div className="p-4 border-t border-[#404249]">
-            <div className="flex space-x-3">
+            {/* Add Comment */}
+            <div className="flex-shrink-0 flex items-center space-x-3 pt-3 border-t border-[#404249]">
               <Avatar className="h-8 w-8 flex-shrink-0">
                 <AvatarImage src={defaultUser.avatar_url} alt={defaultUser.name} />
-                <AvatarFallback className="bg-gradient-to-br from-purple-500 to-pink-600 text-white text-xs">
+                <AvatarFallback className="bg-gradient-to-br from-green-500 to-blue-600 text-white text-sm">
                   {defaultUser.name.charAt(0)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1 flex space-x-2">
                 <input
-                  type="text"
-                  placeholder="Escribe un comentario..."
                   value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  onKeyDown={(e) => {
+                  onChange={(e) => {
+                    setNewComment(e.target.value)
+                    handleTyping(e.target.value, e.target.value.length > 0)
+                  }}
+                  onKeyPress={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {
                       e.preventDefault()
-                      handleAddComment()
+                      handleSubmitComment()
                     }
                   }}
-                  className="flex-1 bg-[#2b2d31] border border-[#404249] rounded-lg px-3 py-2 text-sm text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  disabled={isLoading}
+                  placeholder="Escribe un comentario..."
+                  className="flex-1 bg-[#404249] border-[#5c5f66] text-white placeholder:text-gray-400 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                 />
-                <Button
-                  onClick={handleAddComment}
+                <Button 
+                  onClick={handleSubmitComment}
                   disabled={!newComment.trim() || isLoading}
-                  size="sm"
-                  className="px-3"
+                  className="bg-purple-500 hover:bg-purple-600 text-white"
                 >
-                  {isLoading ? (
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
-                  )}
+                  <Send className="h-4 w-4" />
                 </Button>
               </div>
             </div>
           </div>
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

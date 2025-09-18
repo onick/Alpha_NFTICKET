@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 import CacheService from '@/lib/redis'
+import { getIO } from '@/lib/socket'
 
 // GET - Obtener posts del feed
 export async function GET(request: NextRequest) {
@@ -224,6 +225,48 @@ export async function POST(request: NextRequest) {
     // 4. Invalidate posts cache since we have a new post
     await CacheService.invalidatePostsCache()
     console.log('🗑️ Posts cache invalidated after new post creation')
+
+    // 5. Broadcast new post via Socket.IO (non-blocking)
+    try {
+      const io = getIO()
+      if (io) {
+        // Transform to the format expected by the frontend
+        const feedPost = {
+          id: post.id,
+          author_id: post.author.id,
+          type: post.type || 'user',
+          text: post.content,
+          visibility: post.visibility || 'public',
+          created_at: post.created_at,
+          likes_count: post.likes_count || 0,
+          comments_count: post.comments_count || 0,
+          saves_count: post.saves_count || 0,
+          shares_count: post.shares_count || 0,
+          reports_count: 0,
+          hashtags: post.hashtags || [],
+          location: post.location,
+          media: post.media || [],
+          author: {
+            id: post.author.id,
+            name: post.author.full_name,
+            full_name: post.author.full_name,
+            username: post.author.username,
+            avatar_url: post.author.avatar_url
+          }
+        }
+
+        // Broadcast to all users - they can filter based on their feed type
+        io.emit('new_post', {
+          post: feedPost,
+          feedType: 'all' // Broadcast to all feed types
+        })
+        
+        console.log(`🚀 New post broadcasted via Socket.IO: ${post.id}`)
+      }
+    } catch (socketError) {
+      console.error('Socket.IO broadcast error (non-critical):', socketError)
+      // Don't fail the request if Socket.IO has issues
+    }
 
     return NextResponse.json(transformedPost, { status: 201 })
 

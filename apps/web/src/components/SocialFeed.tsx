@@ -10,6 +10,7 @@ import { PurchaseCard } from './PurchaseCard'
 import { EventCard } from './EventCard'
 import { PostComposer } from './PostComposer'
 import { FeedPostWithAuthor } from '@nfticket/feed'
+import { useSocket } from '@/hooks/useSocket'
 
 interface SocialFeedProps {
   initialTab?: 'home' | 'popular' | 'following'
@@ -25,6 +26,11 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
   const [hasMore, setHasMore] = useState(true)
   const [cursor, setCursor] = useState<string | undefined>()
   const [error, setError] = useState<string | null>(null)
+  const [pendingPosts, setPendingPosts] = useState<FeedPostWithAuthor[]>([])
+  const [showNewPostsNotification, setShowNewPostsNotification] = useState(false)
+
+  // Socket.IO for real-time updates
+  const { on, off, isConnected } = useSocket()
 
   // Mock current user
   const currentUser = {
@@ -150,6 +156,31 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
     console.log('Save post:', postId, saved)
   }
 
+  const loadPendingPosts = () => {
+    if (pendingPosts.length > 0) {
+      setPosts(prev => [...pendingPosts, ...prev])
+      setPendingPosts([])
+      setShowNewPostsNotification(false)
+    }
+  }
+
+  const handleNewPostReceived = (newPost: FeedPostWithAuthor) => {
+    // Check if post already exists
+    const exists = posts.some(p => p.id === newPost.id) || 
+                   pendingPosts.some(p => p.id === newPost.id)
+    
+    if (!exists) {
+      // If user is at the top of the feed, auto-insert the post
+      // Otherwise, add to pending posts and show notification
+      if (window.scrollY <= 100) {
+        setPosts(prev => [newPost, ...prev])
+      } else {
+        setPendingPosts(prev => [newPost, ...prev])
+        setShowNewPostsNotification(true)
+      }
+    }
+  }
+
   const renderPostCard = (post: FeedPostWithAuthor) => {
     const commonProps = {
       key: post.id,
@@ -175,10 +206,68 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
     fetchFeed(activeTab)
   }, [])
 
+  // Real-time updates via Socket.IO
+  useEffect(() => {
+    if (!isConnected) return
+
+    const handleLikeUpdate = (data: {
+      targetType: 'post' | 'comment'
+      targetId: string
+      newCount: number
+      isLiked: boolean
+    }) => {
+      if (data.targetType === 'post') {
+        console.log('📨 Received real-time like update:', data)
+        
+        // Update the post's like count in real-time
+        setPosts(prev => prev.map(post => 
+          post.id === data.targetId 
+            ? { ...post, likes_count: data.newCount }
+            : post
+        ))
+      }
+    }
+
+    const handleNewPost = (data: { post: FeedPostWithAuthor, feedType: string }) => {
+      console.log('🆕 Received new post via Socket.IO:', data)
+      
+      // Only add if it matches current feed type or is for all feeds
+      if (data.feedType === activeTab || data.feedType === 'all') {
+        handleNewPostReceived(data.post)
+      }
+    }
+
+    on('like_updated', handleLikeUpdate)
+    on('new_post', handleNewPost)
+
+    return () => {
+      off('like_updated', handleLikeUpdate)
+      off('new_post', handleNewPost)
+    }
+  }, [isConnected, on, off, activeTab, posts, pendingPosts])
+
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Post Composer */}
       <PostComposer onPost={handleNewPost} currentUser={currentUser} />
+
+      {/* New Posts Notification */}
+      {showNewPostsNotification && pendingPosts.length > 0 && (
+        <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50">
+          <Button
+            onClick={loadPendingPosts}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-lg flex items-center space-x-2 animate-bounce"
+          >
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+            </span>
+            <span>
+              {pendingPosts.length} nueva{pendingPosts.length !== 1 ? 's' : ''} publicación{pendingPosts.length !== 1 ? 'es' : ''}
+            </span>
+          </Button>
+        </div>
+      )}
 
       {/* Feed Tabs */}
       <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">

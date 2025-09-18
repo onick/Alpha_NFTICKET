@@ -62,6 +62,54 @@ export const initializeSocketIO = (server: NetServer): ServerIO => {
       socket.to(`post:${postId}`).emit('user_typing', { user, isTyping: false })
     })
 
+    // Join group chat rooms
+    socket.on('join_group_chat', (groupId: string) => {
+      socket.join(`group:${groupId}`)
+      console.log(`👥 Socket ${socket.id} joined group chat: ${groupId}`)
+    })
+
+    // Leave group chat room
+    socket.on('leave_group_chat', (groupId: string) => {
+      socket.leave(`group:${groupId}`)
+      console.log(`👥 Socket ${socket.id} left group chat: ${groupId}`)
+    })
+
+    // Handle group typing events
+    socket.on('group_typing_start', ({ group_id, user_id, user_name }) => {
+      socket.to(`group:${group_id}`).emit('group_typing_start', { 
+        group_id, 
+        user_id, 
+        user_name 
+      })
+      console.log(`👥 ${user_name} started typing in group ${group_id}`)
+    })
+
+    socket.on('group_typing_stop', ({ group_id, user_id, user_name }) => {
+      socket.to(`group:${group_id}`).emit('group_typing_stop', { 
+        group_id, 
+        user_id, 
+        user_name 
+      })
+      console.log(`👥 ${user_name} stopped typing in group ${group_id}`)
+    })
+
+    // Handle group messages
+    socket.on('group_message', (message) => {
+      socket.to(`group:${message.group_id}`).emit('group_message', message)
+      console.log(`💬 Message sent to group ${message.group_id}`)
+    })
+
+    // Handle group events
+    socket.on('group_created', (group) => {
+      socket.broadcast.emit('group_created', group)
+      console.log(`🎯 Group created: ${group.name}`)
+    })
+
+    socket.on('group_updated', (group) => {
+      socket.to(`group:${group.id}`).emit('group_updated', group)
+      console.log(`🎯 Group updated: ${group.id}`)
+    })
+
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`)
     })
@@ -82,7 +130,7 @@ const setupRedisPubSub = (io: ServerIO) => {
     const subscriber = redis.duplicate()
 
     // Subscribe to real-time events
-    subscriber.subscribe('realtime:comments', 'realtime:likes', 'realtime:posts')
+    subscriber.subscribe('realtime:comments', 'realtime:likes', 'realtime:posts', 'realtime:groups')
 
     subscriber.on('message', (channel, message) => {
       try {
@@ -120,6 +168,20 @@ const setupRedisPubSub = (io: ServerIO) => {
             // Emit new post to all connected clients
             io.emit('new_post', data.post)
             console.log(`🆕 Broadcasted new post ${data.post.id}`)
+            break
+            
+          case 'realtime:groups':
+            // Handle group-related events
+            if (data.type === 'group_created') {
+              io.emit('group_created', data.group)
+              console.log(`🎯 Broadcasted group creation: ${data.group.name}`)
+            } else if (data.type === 'group_updated') {
+              io.to(`group:${data.group.id}`).emit('group_updated', data.group)
+              console.log(`🎯 Broadcasted group update: ${data.group.id}`)
+            } else if (data.type === 'group_message') {
+              io.to(`group:${data.message.group_id}`).emit('group_message', data.message)
+              console.log(`💬 Broadcasted group message to ${data.message.group_id}`)
+            }
             break
         }
       } catch (error) {
@@ -166,5 +228,16 @@ export const publishPost = async (post: any) => {
     }))
   } catch (error) {
     console.error('Error publishing post:', error)
+  }
+}
+
+export const publishGroupEvent = async (type: 'group_created' | 'group_updated' | 'group_message', data: any) => {
+  try {
+    await redis.publish('realtime:groups', JSON.stringify({
+      type,
+      ...data
+    }))
+  } catch (error) {
+    console.error('Error publishing group event:', error)
   }
 }

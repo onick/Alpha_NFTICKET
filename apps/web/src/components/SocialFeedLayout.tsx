@@ -12,6 +12,7 @@ import { TipTapEditorRef } from './TipTapEditor'
 import { extractHashtags, extractMentions, htmlToPlainText } from '@/lib/tiptap-helpers'
 import { CommentsModal } from './CommentsModal'
 import { ShareModal } from './ShareModal'
+import { EventGroupModal } from './EventGroupModal'
 
 interface SocialPost {
   id: string
@@ -82,6 +83,7 @@ export function SocialFeedLayout() {
   const [activeTab, setActiveTab] = useState<'following' | 'discover' | 'communities'>('following')
   const [isCommentsOpen, setIsCommentsOpen] = useState(false)
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
+  const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null)
   const [postComments, setPostComments] = useState<Record<string, any[]>>({})
   const [commentLikes, setCommentLikes] = useState<Record<string, { liked: boolean, count: number }>>({})

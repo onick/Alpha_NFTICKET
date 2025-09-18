@@ -2,6 +2,7 @@
 
 import { Calendar, TrendingUp, Users, Plus, Bell, Settings, User } from 'lucide-react'
 import { AuthDropdown } from './AuthDropdown'
+import { NotificationsCenter } from './NotificationsCenter'
 
 export function SimpleHeader() {
   return (
@@ -56,12 +57,7 @@ export function SimpleHeader() {
                 </button>
                 
                 {/* Notifications */}
-                <button className="relative w-8 h-8 rounded-lg bg-gray-700/50 hover:bg-gray-600/50 flex items-center justify-center transition-colors duration-200">
-                  <Bell size={16} className="text-gray-300" />
-                  <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full flex items-center justify-center text-xs text-white">
-                    1
-                  </span>
-                </button>
+                <NotificationsCenter />
                 
                 {/* Settings - Hidden on mobile */}
                 <button className="hidden sm:flex w-8 h-8 rounded-lg bg-gray-700/50 hover:bg-gray-600/50 items-center justify-center transition-colors duration-200">
