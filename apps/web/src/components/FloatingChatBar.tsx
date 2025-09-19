@@ -253,7 +253,7 @@ export function FloatingChatBar() {
             onSendMessage={(content) => sendMessage(chatWindow.contact.id, content)}
             onBackToList={() => {
               setIsOpen(true)
-              minimizeChat(chatWindow.contact.id)
+              closeChat(chatWindow.contact.id)
             }}
             style={{ 
               marginRight: `${index * 10}px`,
