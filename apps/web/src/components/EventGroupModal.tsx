@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useSocket } from '@/hooks/useSocket'
+import { useGlobalSocket } from '@/contexts/SocketContext'
 import { GroupChatModal } from '@/components/GroupChatModal'
 
 interface EventGroup {
@@ -75,7 +75,7 @@ export function EventGroupModal({ isOpen, onClose, event }: EventGroupModalProps
     is_private: false
   })
 
-  const { on, off, emit, isConnected } = useSocket()
+  const { on, off, emit, isConnected } = useGlobalSocket()
 
   // Load existing groups for this event
   useEffect(() => {

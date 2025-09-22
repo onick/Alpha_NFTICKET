@@ -144,17 +144,39 @@ export function useAuth(): AuthState & {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isHydrated, setIsHydrated] = useState(false)
+
+  // Handle hydration
+  useEffect(() => {
+    setIsHydrated(true)
+    
+    // Check localStorage after hydration
+    if (typeof window !== 'undefined') {
+      const storedUser = localStorage.getItem('nfticket_mock_user')
+      if (storedUser) {
+        try {
+          const parsedUser = JSON.parse(storedUser)
+          setUser(parsedUser)
+        } catch (e) {
+          // If parsing fails, remove invalid data
+          localStorage.removeItem('nfticket_mock_user')
+        }
+      }
+    }
+    setLoading(false)
+  }, [])
 
   useEffect(() => {
+    if (!isHydrated) return
+    
     const auth = getAuthService()
     
     const unsubscribe = auth.onAuthStateChange((user) => {
       setUser(user)
-      setLoading(false)
     })
 
     return unsubscribe
-  }, [])
+  }, [isHydrated])
 
   const signIn = async (email: string, password: string) => {
     setLoading(true)

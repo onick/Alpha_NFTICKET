@@ -75,6 +75,8 @@ export function PopularLayout() {
   const [popularUsers, setPopularUsers] = useState<PopularUser[]>([])
   const [trendingEvents, setTrendingEvents] = useState<TrendingEvent[]>([])
 
+
+
   useEffect(() => {
     // Load safe metrics data (no sensitive business information exposed)
     setTrendingPosts([
@@ -504,7 +506,6 @@ export function PopularLayout() {
 
   return (
     <ModularLayout
-      leftSidebar={<SimpleSidebar />}
       mainContent={<PopularContent />}
       rightModules={rightModules}
       showRightSidebar={true}

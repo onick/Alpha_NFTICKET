@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useSocket } from '@/hooks/useSocket'
+import { useGlobalSocket } from '@/contexts/SocketContext'
 
 interface GroupMessage {
   id: string
@@ -66,7 +66,7 @@ export function GroupChatModal({ isOpen, onClose, group }: GroupChatModalProps) 
   const inputRef = useRef<HTMLInputElement>(null)
   const typingTimeoutRef = useRef<NodeJS.Timeout>()
 
-  const { on, off, emit, isConnected } = useSocket()
+  const { on, off, emit, isConnected } = useGlobalSocket()
 
   // Auto-scroll to bottom when new messages arrive
   const scrollToBottom = () => {

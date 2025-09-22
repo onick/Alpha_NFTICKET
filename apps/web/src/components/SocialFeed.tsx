@@ -9,8 +9,9 @@ import { PostCard } from './PostCard'
 import { PurchaseCard } from './PurchaseCard'
 import { EventCard } from './EventCard'
 import { PostComposer } from './PostComposer'
+import { PostDetailModal } from './PostDetailModal'
 import { FeedPostWithAuthor } from '@nfticket/feed'
-import { useSocket } from '@/hooks/useSocket'
+import { useGlobalSocket } from '@/contexts/SocketContext'
 
 interface SocialFeedProps {
   initialTab?: 'home' | 'popular' | 'following'
@@ -28,9 +29,11 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
   const [error, setError] = useState<string | null>(null)
   const [pendingPosts, setPendingPosts] = useState<FeedPostWithAuthor[]>([])
   const [showNewPostsNotification, setShowNewPostsNotification] = useState(false)
+  const [selectedPost, setSelectedPost] = useState<FeedPostWithAuthor | null>(null)
+  const [isPostModalOpen, setIsPostModalOpen] = useState(false)
 
   // Socket.IO for real-time updates
-  const { on, off, isConnected } = useSocket()
+  const { on, off, isConnected } = useGlobalSocket()
 
   // Mock current user
   const currentUser = {
@@ -156,6 +159,16 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
     console.log('Save post:', postId, saved)
   }
 
+  const handlePostClick = (post: FeedPostWithAuthor) => {
+    setSelectedPost(post)
+    setIsPostModalOpen(true)
+  }
+
+  const closePostModal = () => {
+    setIsPostModalOpen(false)
+    setSelectedPost(null)
+  }
+
   const loadPendingPosts = () => {
     if (pendingPosts.length > 0) {
       setPosts(prev => [...pendingPosts, ...prev])
@@ -188,7 +201,8 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
       onLike: handleLike,
       onComment: handleComment,
       onShare: handleShare,
-      onSave: handleSave
+      onSave: handleSave,
+      onClick: () => handlePostClick(post)
     }
 
     switch (post.type) {
@@ -332,6 +346,17 @@ export function SocialFeed({ initialTab = 'home' }: SocialFeedProps) {
           />
         </TabsContent>
       </Tabs>
+
+      {/* Post Detail Modal */}
+      <PostDetailModal
+        post={selectedPost}
+        isOpen={isPostModalOpen}
+        onClose={closePostModal}
+        onLike={handleLike}
+        onComment={handleComment}
+        onShare={handleShare}
+        onSave={handleSave}
+      />
     </div>
   )
 }
@@ -417,6 +442,16 @@ function getMockPosts(): FeedPostWithAuthor[] {
       reports_count: 0,
       hashtags: ['SantoDomingo', 'RepublicaDominicana'],
       location: 'Aeropuerto Las Américas',
+      media: [
+        {
+          id: 'media-1',
+          url: 'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800&h=600&fit=crop'
+        },
+        {
+          id: 'media-2',
+          url: 'https://images.unsplash.com/photo-1520637836862-4d197d17c26a?w=800&h=600&fit=crop'
+        }
+      ],
       author: {
         id: 'user1',
         name: 'María González',

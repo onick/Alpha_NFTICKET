@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { useSocket } from '@/hooks/useSocket'
+import { useGlobalSocket } from '@/contexts/SocketContext'
 
 interface Notification {
   id: string
@@ -40,7 +40,7 @@ export function NotificationsCenter() {
   const [isLoading, setIsLoading] = useState(false)
 
   // Socket.IO for real-time notifications
-  const { on, off, isConnected } = useSocket()
+  const { on, off, isConnected } = useGlobalSocket()
   
   // Ref for dropdown to handle outside clicks
   const dropdownRef = useRef<HTMLDivElement>(null)

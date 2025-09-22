@@ -204,7 +204,7 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
         </button>
 
         {isOpen && (
-          <div className="absolute right-0 mt-2 w-80 bg-[#2b2d31] rounded-xl border border-[#404249] shadow-xl z-50 overflow-hidden">
+          <div className="absolute right-0 mt-2 w-80 bg-[#2b2d31] rounded-xl border border-[#404249] shadow-xl z-[9999] overflow-hidden">
             {/* User info header */}
             <div className="px-4 py-3 bg-gradient-to-r from-purple-500/10 to-pink-500/10 border-b border-[#404249]">
               <div className="flex items-center space-x-3">
@@ -318,7 +318,7 @@ export function AuthDropdown({ className = '' }: AuthDropdownProps) {
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-96 bg-[#2b2d31] rounded-xl border border-[#404249] shadow-xl z-50 overflow-hidden">
+        <div className="absolute right-0 mt-2 w-96 bg-[#2b2d31] rounded-xl border border-[#404249] shadow-xl z-[9999] overflow-hidden">
           {/* Header tabs */}
           <div className="flex border-b border-[#404249]">
             <button

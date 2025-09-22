@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge'
 import { X, Heart, MessageCircle, Share, Bookmark, Send, MoreHorizontal, Ticket } from 'lucide-react'
 import { FeedPostWithAuthor } from '@nfticket/feed'
 import { useAuth } from '@/lib/auth'
-import { useSocket } from '@/hooks/useSocket'
+import { useGlobalSocket } from '@/contexts/SocketContext'
 
 interface Comment {
   id: string
@@ -114,7 +114,7 @@ export function CommentsModal({
   const replyInputRef = useRef<HTMLInputElement>(null)
   
   // Socket.IO integration
-  const { joinPost, leavePost, on, off, isConnected, startTyping, stopTyping } = useSocket()
+  const { joinPost, leavePost, on, off, isConnected, startTyping, stopTyping } = useGlobalSocket()
   
   // Typing timeout ref
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null)
@@ -327,13 +327,20 @@ export function CommentsModal({
 
   const handleCommentLikeLocal = async (commentId: string) => {
     try {
+      // First, find the current like state of the comment
+      const comment = comments.find(c => c.id === commentId) || 
+                    comments.find(c => c.replies?.some(r => r.id === commentId))?.replies?.find(r => r.id === commentId)
+      
+      const currentLikeState = comment?.is_liked || false
+      const action = currentLikeState ? 'unlike' : 'like'
+
       const response = await fetch('/api/likes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetId: commentId,
           targetType: 'comment',
-          action: 'toggle'
+          action: action
         })
       })
 
@@ -344,8 +351,8 @@ export function CommentsModal({
           if (comment.id === commentId) {
             return {
               ...comment,
-              is_liked: data.liked,
-              likes_count: data.count
+              is_liked: data.isLiked,
+              likes_count: data.newCount
             }
           }
           
@@ -354,7 +361,7 @@ export function CommentsModal({
               ...comment,
               replies: comment.replies.map(reply => 
                 reply.id === commentId 
-                  ? { ...reply, is_liked: data.liked, likes_count: data.count }
+                  ? { ...reply, is_liked: data.isLiked, likes_count: data.newCount }
                   : reply
               )
             }
@@ -363,7 +370,7 @@ export function CommentsModal({
           return comment
         }))
         
-        onCommentLike?.(commentId, data.count)
+        onCommentLike?.(commentId, data.newCount)
       }
     } catch (error) {
       console.error('Error toggling comment like:', error)
@@ -372,21 +379,23 @@ export function CommentsModal({
 
   const handleLike = async () => {
     try {
+      const action = isPostLiked ? 'unlike' : 'like'
+      
       const response = await fetch('/api/likes', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetId: post.id,
           targetType: 'post',
-          action: 'toggle'
+          action: action
         })
       })
 
       if (response.ok) {
         const data = await response.json()
-        setIsPostLiked(data.liked)
-        setPostLikesCount(data.count)
-        onLike?.(post.id, data.liked)
+        setIsPostLiked(data.isLiked)
+        setPostLikesCount(data.newCount)
+        onLike?.(post.id, data.isLiked)
       }
     } catch (error) {
       console.error('Error toggling post like:', error)

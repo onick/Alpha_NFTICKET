@@ -23,24 +23,26 @@ export function TwitterLikeLayout() {
     } else {
       setCurrentView('feed')
     }
+    
+    // Emit custom event for sidebar to listen
+    window.dispatchEvent(new CustomEvent('viewChanged', {
+      detail: { view: view }
+    }))
   }, [searchParams])
 
   useEffect(() => {
-    // Set up global functions for navigation
-    ;(window as any).openProfileModal = () => {
-      setCurrentView('profile')
-      // Update URL without page reload
-      const url = new URL(window.location.href)
-      url.searchParams.set('view', 'profile')
-      window.history.pushState({}, '', url.toString())
-    }
-
+    // Set up profile modal close function only
     ;(window as any).closeProfileModal = () => {
       setCurrentView('feed')
       // Update URL without page reload
       const url = new URL(window.location.href)
       url.searchParams.delete('view')
       window.history.pushState({}, '', url.toString())
+      
+      // Emit event for sidebar
+      window.dispatchEvent(new CustomEvent('viewChanged', {
+        detail: { view: null }
+      }))
     }
 
     // Handle browser back/forward
@@ -56,9 +58,10 @@ export function TwitterLikeLayout() {
 
     window.addEventListener('popstate', handlePopState)
 
-    // Clean up
+    // Clean up - only clean up what this component owns
     return () => {
-      delete (window as any).openProfileModal
+      // CRITICAL: NEVER delete openProfileModal - it's owned by the root layout!
+      // Deleting it breaks profile navigation from other pages
       delete (window as any).closeProfileModal
       window.removeEventListener('popstate', handlePopState)
     }
@@ -123,7 +126,6 @@ export function TwitterLikeLayout() {
 
   return (
     <ModularLayout
-      leftSidebar={<SimpleSidebar />}
       mainContent={mainContent}
       rightModules={rightModules}
       showRightSidebar={true}

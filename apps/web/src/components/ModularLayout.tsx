@@ -26,16 +26,7 @@ export function ModularLayout({
     <div className="min-h-screen bg-[#2b2d31]">
       <div className="flex justify-center">
         <div className="flex w-full relative min-h-screen">
-          {/* Left Sidebar */}
-          {leftSidebar && (
-            <aside className="hidden lg:block w-64 shrink-0">
-              <div className="fixed top-[var(--header-h)] w-64 h-[calc(100vh-var(--header-h))] bg-[#2b2d31] overflow-y-auto z-40">
-                <div className="p-4">
-                  {leftSidebar}
-                </div>
-              </div>
-            </aside>
-          )}
+          {/* Left Sidebar - now handled by root layout */}
 
           {/* Main Content Area */}
           <div className="flex-1 lg:border-l border-[#404249] min-h-screen">

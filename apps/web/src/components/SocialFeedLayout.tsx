@@ -85,6 +85,8 @@ export function SocialFeedLayout() {
   const [isShareModalOpen, setIsShareModalOpen] = useState(false)
   const [isGroupModalOpen, setIsGroupModalOpen] = useState(false)
   const [selectedPost, setSelectedPost] = useState<SocialPost | null>(null)
+
+
   const [postComments, setPostComments] = useState<Record<string, any[]>>({})
   const [commentLikes, setCommentLikes] = useState<Record<string, { liked: boolean, count: number }>>({})
 
@@ -1181,7 +1183,6 @@ export function SocialFeedLayout() {
   return (
     <>
       <ModularLayout
-        leftSidebar={<SimpleSidebar />}
         mainContent={<SocialFeedContent />}
         rightModules={rightModules}
         showRightSidebar={true}

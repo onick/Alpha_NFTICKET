@@ -3,14 +3,32 @@
 import { Home, TrendingUp, Hash, Plus, Users, User } from 'lucide-react'
 import { useAuth } from '@/lib/auth'
 import { usePathname, useSearchParams } from 'next/navigation'
+import { useState, useEffect } from 'react'
+import Link from 'next/link'
 
 export function SimpleSidebar() {
-  const { user } = useAuth()
+  const { user, loading } = useAuth()
   const pathname = usePathname()
   const searchParams = useSearchParams()
+  const [currentView, setCurrentView] = useState<string | null>(null)
   
-  // Check current view from URL params
-  const currentView = searchParams.get('view')
+  // Listen for view changes from URL params and custom events
+  useEffect(() => {
+    const urlView = searchParams.get('view')
+    setCurrentView(urlView)
+  }, [searchParams])
+
+  // Listen for custom navigation events from TwitterLikeLayout
+  useEffect(() => {
+    const handleViewChange = (event: CustomEvent) => {
+      setCurrentView(event.detail.view)
+    }
+
+    window.addEventListener('viewChanged', handleViewChange as EventListener)
+    return () => {
+      window.removeEventListener('viewChanged', handleViewChange as EventListener)
+    }
+  }, [])
   
   const currentPath = pathname
   
@@ -33,7 +51,7 @@ export function SimpleSidebar() {
         <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">PRINCIPAL</h3>
         <div className="space-y-1">
           {principalItems.map((item) => (
-            <a
+            <Link
               key={item.href}
               href={item.href}
               className={`flex items-center space-x-3 px-2 py-2 rounded-lg transition-all duration-200 ${
@@ -44,31 +62,39 @@ export function SimpleSidebar() {
             >
               <item.icon size={20} />
               <span className="font-medium">{item.label}</span>
-            </a>
+            </Link>
           ))}
         </div>
       </div>
 
-      {/* User Profile Section - Show only if logged in */}
-      {user && (
+      {/* User Profile Section - Show loading placeholder or user profile */}
+      {(loading || user) && (
         <div className="space-y-4">
           <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider">MI CUENTA</h3>
           <div className="space-y-1">
-            <button
-              onClick={() => {
-                if ((window as any).openProfileModal) {
-                  (window as any).openProfileModal()
-                }
-              }}
-              className={`w-full flex items-center space-x-3 px-2 py-2 rounded-lg transition-all duration-200 ${
-                currentView === 'profile'
-                  ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' 
-                  : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
-              }`}
-            >
-              <User size={20} />
-              <span className="font-medium">Mi Perfil</span>
-            </button>
+            {loading ? (
+              // Loading placeholder that matches the button size
+              <div className="w-full flex items-center space-x-3 px-2 py-2 rounded-lg bg-gray-700/30 animate-pulse">
+                <div className="w-5 h-5 bg-gray-600 rounded"></div>
+                <div className="h-4 bg-gray-600 rounded w-20"></div>
+              </div>
+            ) : (
+              <button
+                onClick={() => {
+                  if ((window as any).openProfileModal) {
+                    (window as any).openProfileModal()
+                  }
+                }}
+                className={`w-full flex items-center space-x-3 px-2 py-2 rounded-lg transition-all duration-200 ${
+                  currentView === 'profile'
+                    ? 'bg-gradient-to-r from-purple-500 to-purple-600 text-white' 
+                    : 'text-gray-300 hover:bg-gray-700/50 hover:text-white'
+                }`}
+              >
+                <User size={20} />
+                <span className="font-medium">Mi Perfil</span>
+              </button>
+            )}
           </div>
         </div>
       )}
